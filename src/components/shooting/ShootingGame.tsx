@@ -18,8 +18,13 @@ import {
 const W = 480;
 const H = 640;
 const GAME_SECONDS = 30;
-const COOLDOWN = 0.35; // 連射クールダウン(s)
 const RESPAWN_DELAY = 1.2; // 倒してからrespawnまで(s)
+const MAX_AMMO = 6; // コルクの装填数
+const CORK_FLIGHT = 0.18; // コルクの飛翔時間(s)。この間は次弾発射不可
+const RELOAD_TIME = 1.2; // リロード所要時間(s)
+const AIM_OFFSET_Y = 70; // 照準は指の位置よりこのpx分上に出す
+const DROP_Y = 14; // 弾道落下: 着弾点は照準より下にずれる(px)
+const RELOAD_BTN = { x: W - 52, y: H - 52, r: 36 } as const; // 右下リロードボタン（rは当たり判定半径）
 const SHELF_YS = [300, 440] as const; // 棚の天板y
 const SLOT_XS = [96, 192, 288, 384] as const; // 棚の4スロットx
 const STAR_Y = 370; // 星が流れる高さ（棚の間）
@@ -85,9 +90,34 @@ type Confetti = {
 
 type Hole = { x: number; y: number; until: number };
 
+/** ドラッグ照準。fx/fyは指の生座標（照準位置は-70px+手ブレで導出） */
+type Aim = {
+  active: boolean;
+  pointerId: number;
+  fx: number;
+  fy: number;
+  phase: number; // 手ブレ揺れの位相（ドラッグ開始ごとにランダム）
+};
+
+/** 飛翔中のコルク（下端→着弾点へ直線補間） */
+type Cork = {
+  active: boolean;
+  sx: number;
+  sy: number;
+  tx: number;
+  ty: number;
+  start: number;
+};
+
+type Reload = { active: boolean; start: number };
+
 /* ============================== 純関数ヘルパー ============================== */
 
 let genSeed = 1;
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
+}
 
 function makeSlotTarget(shelf: number, slot: number): SlotTarget {
   genSeed += 1;
@@ -585,6 +615,81 @@ function drawReticle(
   ctx.restore();
 }
 
+/** 飛翔中のコルク（クラフト紙色の小円・奥へ飛ぶほど縮む） */
+function drawCork(ctx: CanvasRenderingContext2D, cork: Cork, now: number): void {
+  const t = clamp((now - cork.start) / CORK_FLIGHT, 0, 1);
+  const x = cork.sx + (cork.tx - cork.sx) * t;
+  const y = cork.sy + (cork.ty - cork.sy) * t;
+  const scale = 1 - 0.45 * t; // 1.0 → 0.55
+  paperCircle(ctx, x, y, 7 * scale, {
+    fill: P.kraftLight,
+    seed: 940,
+    jitter: 0.8,
+    edge: P.kraftDeep,
+    edgeWidth: 1.2,
+    shadowDy: 2,
+  });
+}
+
+/** 左下の残弾表示（コルク6個。使った分は空枠） */
+function drawAmmo(ctx: CanvasRenderingContext2D, ammo: number): void {
+  for (let i = 0; i < MAX_AMMO; i++) {
+    const x = 26 + i * 24;
+    const y = H - 26;
+    if (i < ammo) {
+      paperCircle(ctx, x, y, 7, {
+        fill: P.kraftLight,
+        seed: 950 + i,
+        jitter: 0.8,
+        edge: P.kraftDeep,
+        edgeWidth: 1.2,
+        shadowDy: 2,
+      });
+    } else {
+      ctx.strokeStyle = "rgba(251,240,218,.4)";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+}
+
+/** 右下のリロードボタン（クラフト紙の丸 + 進捗の弧）。emphasize=残弾0を促す強調 */
+function drawReloadButton(
+  ctx: CanvasRenderingContext2D,
+  now: number,
+  reload: Reload,
+  emphasize: boolean,
+): void {
+  const scale = emphasize ? 1 + 0.14 * Math.abs(Math.sin(now * 8)) : 1;
+  ctx.save();
+  ctx.translate(RELOAD_BTN.x, RELOAD_BTN.y);
+  ctx.scale(scale, scale);
+  paperCircle(ctx, 0, 0, 30, {
+    fill: P.kraftLight,
+    seed: 970,
+    jitter: 1.6,
+    edge: emphasize ? P.red : P.kraftDeep,
+    edgeWidth: emphasize ? 3 : 1.6,
+    shadowDy: 4,
+  });
+  ctx.fillStyle = emphasize ? P.red : P.indigo;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = '900 10px "Zen Maru Gothic", sans-serif';
+  ctx.fillText("リロード", 0, 1);
+  if (reload.active) {
+    const frac = clamp((now - reload.start) / RELOAD_TIME, 0, 1);
+    ctx.strokeStyle = P.red;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, 24, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 /* ============================== コンポーネント ============================== */
 
 export default function ShootingGame() {
@@ -599,8 +704,24 @@ export default function ShootingGame() {
   const secondsShownRef = useRef(GAME_SECONDS);
   const startAtRef = useRef(0);
   const endAtRef = useRef(0);
-  const lastShotRef = useRef(-1e9);
-  const aimRef = useRef({ x: W / 2, y: H * 0.6, visible: false });
+  const aimRef = useRef<Aim>({
+    active: false,
+    pointerId: -1,
+    fx: W / 2,
+    fy: H * 0.6,
+    phase: 0,
+  });
+  const corkRef = useRef<Cork>({
+    active: false,
+    sx: 0,
+    sy: H,
+    tx: 0,
+    ty: 0,
+    start: 0,
+  });
+  const ammoRef = useRef(MAX_AMMO);
+  const reloadRef = useRef<Reload>({ active: false, start: 0 });
+  const emptyFlashUntilRef = useRef(-1e9); // 残弾0発射でこの時刻までボタン強調
   const targetsRef = useRef<SlotTarget[]>([]);
   const starRef = useRef<Star>({
     alive: false,
@@ -635,7 +756,11 @@ export default function ShootingGame() {
     setScore(0);
     secondsShownRef.current = GAME_SECONDS;
     setSecondsLeft(GAME_SECONDS);
-    lastShotRef.current = -1e9;
+    aimRef.current = { active: false, pointerId: -1, fx: W / 2, fy: H * 0.6, phase: 0 };
+    corkRef.current = { active: false, sx: 0, sy: H, tx: 0, ty: 0, start: 0 };
+    ammoRef.current = MAX_AMMO;
+    reloadRef.current = { active: false, start: 0 };
+    emptyFlashUntilRef.current = -1e9;
     confettiRef.current = [];
     holesRef.current = [];
     targetsRef.current = makeTargets();
@@ -703,12 +828,25 @@ export default function ShootingGame() {
       };
     };
 
-    const shoot = (x: number, y: number) => {
+    /** 指の生座標→照準の基準位置（70px上・ステージ内にクランプ） */
+    const aimBase = () => ({
+      x: clamp(aimRef.current.fx, 0, W),
+      y: clamp(aimRef.current.fy - AIM_OFFSET_Y, 0, H),
+    });
+
+    /** 手ブレ揺れ込みの照準位置（押している間ずっと揺れる） */
+    const aimShaken = (now: number) => {
+      const b = aimBase();
+      const ph = aimRef.current.phase;
+      return {
+        x: b.x + Math.sin(now * 1.7 + ph) * 6,
+        y: b.y + Math.cos(now * 2.3 + ph) * 5,
+      };
+    };
+
+    /** コルク着弾時のヒット判定（consider方式・的中心との距離） */
+    const resolveImpact = (x: number, y: number, now: number) => {
       if (phaseRef.current !== "playing") return;
-      const now = performance.now() / 1000;
-      if (now - lastShotRef.current < COOLDOWN) return;
-      lastShotRef.current = now;
-      sfx.whoosh();
 
       const wave = WAVES[waveRef.current];
 
@@ -788,17 +926,75 @@ export default function ShootingGame() {
       }
     };
 
-    const onMove = (e: PointerEvent) => {
-      const p = toLogical(e);
-      aimRef.current = { x: p.x, y: p.y, visible: true };
-    };
     const onDown = (e: PointerEvent) => {
+      if (phaseRef.current !== "playing") return;
       const p = toLogical(e);
-      aimRef.current = { x: p.x, y: p.y, visible: true };
-      shoot(p.x, p.y);
+      const now = performance.now() / 1000;
+      // リロードボタン領域: 照準を出さずにリロード開始
+      if (Math.hypot(p.x - RELOAD_BTN.x, p.y - RELOAD_BTN.y) <= RELOAD_BTN.r) {
+        if (!reloadRef.current.active && ammoRef.current < MAX_AMMO) {
+          reloadRef.current = { active: true, start: now };
+          sfx.tap();
+        }
+        return;
+      }
+      if (aimRef.current.active) return; // 2本目の指は無視
+      aimRef.current = {
+        active: true,
+        pointerId: e.pointerId,
+        fx: p.x,
+        fy: p.y,
+        phase: Math.random() * Math.PI * 2,
+      };
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* 一部環境でcapture不可でも動作継続 */
+      }
     };
-    const onLeave = () => {
-      aimRef.current.visible = false;
+
+    const onMove = (e: PointerEvent) => {
+      const aim = aimRef.current;
+      if (!aim.active || aim.pointerId !== e.pointerId) return;
+      const p = toLogical(e);
+      aim.fx = p.x;
+      aim.fy = p.y;
+    };
+
+    const onUp = (e: PointerEvent) => {
+      const aim = aimRef.current;
+      if (!aim.active || aim.pointerId !== e.pointerId) return;
+      const p = toLogical(e);
+      aim.fx = p.x;
+      aim.fy = p.y;
+      aim.active = false;
+      if (phaseRef.current !== "playing") return;
+      // リロード中・コルク飛翔中は発射不可
+      if (reloadRef.current.active || corkRef.current.active) return;
+      const now = performance.now() / 1000;
+      if (ammoRef.current <= 0) {
+        // 弾切れ: 発射せずリロードボタンを1秒強調して促す
+        emptyFlashUntilRef.current = now + 1;
+        return;
+      }
+      // 発射: 離した瞬間の照準位置（手ブレ込み）+ 弾道落下14px が着弾点
+      const pos = aimShaken(now);
+      ammoRef.current -= 1;
+      sfx.whoosh();
+      corkRef.current = {
+        active: true,
+        sx: pos.x,
+        sy: H,
+        tx: clamp(pos.x, 0, W),
+        ty: clamp(pos.y + DROP_Y, 0, H),
+        start: now,
+      };
+    };
+
+    const onCancel = (e: PointerEvent) => {
+      // 中断: 発射せず照準を消すだけ
+      const aim = aimRef.current;
+      if (aim.active && aim.pointerId === e.pointerId) aim.active = false;
     };
 
     const update = (now: number, dt: number) => {
@@ -836,6 +1032,21 @@ export default function ShootingGame() {
         setPhase("result");
         sfx.finish();
         return;
+      }
+
+      // リロード進行（1.2秒で残弾6に）
+      const reload = reloadRef.current;
+      if (reload.active && now - reload.start >= RELOAD_TIME) {
+        reload.active = false;
+        ammoRef.current = MAX_AMMO;
+        sfx.hit();
+      }
+
+      // コルク飛翔（0.18秒で着弾→ヒット判定）
+      const cork = corkRef.current;
+      if (cork.active && now - cork.start >= CORK_FLIGHT) {
+        cork.active = false;
+        resolveImpact(cork.tx, cork.ty, now);
       }
 
       // ウェーブ進行（30秒を3分割）
@@ -926,17 +1137,31 @@ export default function ShootingGame() {
       drawConfetti(ctx, confettiRef.current);
       drawHoles(ctx, holesRef.current);
 
-      if (phaseRef.current === "playing" && aimRef.current.visible) {
-        const cd = Math.min(1, (now - lastShotRef.current) / COOLDOWN);
-        drawReticle(ctx, aimRef.current.x, aimRef.current.y, 0.55 + 0.45 * cd);
-        // 照準の少し上にコンボ紙タグ（コンボ2以上・ヒット直後に少しポップ）
-        if (comboRef.current >= 2) {
-          const pop =
-            1 + 0.35 * Math.max(0, 1 - (now - comboHitAtRef.current) / 0.25);
-          const tx = Math.min(W - 70, Math.max(70, aimRef.current.x));
-          const ty =
-            aimRef.current.y > 70 ? aimRef.current.y - 46 : aimRef.current.y + 52;
-          drawComboTag(ctx, tx, ty, comboRef.current, pop);
+      if (phaseRef.current === "playing") {
+        // 残弾（左下）+ リロードボタン（右下）
+        drawAmmo(ctx, ammoRef.current);
+        drawReloadButton(
+          ctx,
+          now,
+          reloadRef.current,
+          now < emptyFlashUntilRef.current,
+        );
+
+        // 飛翔中のコルク
+        if (corkRef.current.active) drawCork(ctx, corkRef.current, now);
+
+        // 照準は押している間だけ表示（手ブレ揺れ込み）
+        if (aimRef.current.active) {
+          const pos = aimShaken(now);
+          drawReticle(ctx, pos.x, pos.y, corkRef.current.active ? 0.8 : 1);
+          // 照準の少し上にコンボ紙タグ（コンボ2以上・ヒット直後に少しポップ）
+          if (comboRef.current >= 2) {
+            const pop =
+              1 + 0.35 * Math.max(0, 1 - (now - comboHitAtRef.current) / 0.25);
+            const tx = Math.min(W - 70, Math.max(70, pos.x));
+            const ty = pos.y > 70 ? pos.y - 46 : pos.y + 52;
+            drawComboTag(ctx, tx, ty, comboRef.current, pop);
+          }
         }
       }
 
@@ -956,14 +1181,16 @@ export default function ShootingGame() {
     };
     raf = requestAnimationFrame(frame);
 
-    canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerdown", onDown);
-    canvas.addEventListener("pointerleave", onLeave);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onCancel);
     return () => {
       cancelAnimationFrame(raf);
-      canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerdown", onDown);
-      canvas.removeEventListener("pointerleave", onLeave);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", onUp);
+      canvas.removeEventListener("pointercancel", onCancel);
     };
   }, []);
 
@@ -974,9 +1201,13 @@ export default function ShootingGame() {
       <div className="torn max-w-xs border-[3px] border-kraft-paper bg-kraft paper-grain p-6 text-center text-fes-ink shadow-paper">
         <h2 className="font-maru text-2xl font-black text-fes-indigo">🎯 射的</h2>
         <p className="mt-3 font-maru text-sm font-bold">
-          ねらってタップ！ 連続ヒットでコンボ倍率がどんどんUP（最大×2）
+          ドラッグでねらって、はなして発射！ 弾はすこし下に落ちる
         </p>
         <p className="mt-2 font-maru text-xs font-bold text-fes-ink/70">
+          コルクは6発。リロードボタンで装填
+          <br />
+          連続ヒットでコンボ倍率がどんどんUP（最大×2）
+          <br />
           後半ほど的が小さく速くなって高得点（WAVE2 ×1.5 / WAVE3 ×2）
           <br />
           風船10点・缶20点・星30点・金のしば100点！
@@ -1024,7 +1255,7 @@ export default function ShootingGame() {
   return (
     <GameShell
       title="射 的"
-      tagline="ねらってタップ！"
+      tagline="ドラッグでねらって、はなして発射！"
       scoreboard={
         <div className="flex items-center justify-between font-maru text-sm font-black">
           <span>⏱ のこり{secondsLeft}秒</span>
