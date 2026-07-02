@@ -30,7 +30,7 @@ export default function Hero() {
           <img
             src="/art/title-logo.webp"
             alt="Substack 夏祭り"
-            className="w-full max-w-[480px] drop-shadow-[0_10px_24px_rgba(0,0,0,.45)] sm:max-w-[600px]"
+            className="w-full max-w-[520px] drop-shadow-[0_10px_24px_rgba(0,0,0,.5)] sm:max-w-[720px]"
           />
         </h1>
         <p
