@@ -24,7 +24,8 @@ const CORK_FLIGHT = 0.18; // コルクの飛翔時間(s)。この間は次弾発
 const RELOAD_TIME = 1.2; // リロード所要時間(s)
 const AIM_OFFSET_Y = 70; // 照準は指の位置よりこのpx分上に出す
 const DROP_Y = 14; // 弾道落下: 着弾点は照準より下にずれる(px)
-const RELOAD_BTN = { x: W - 52, y: H - 52, r: 36 } as const; // 右下リロードボタン（rは当たり判定半径）
+// リロードボタンは右上（下側だと操作中の指で隠れる）。rは当たり判定半径
+const RELOAD_BTN = { x: W - 52, y: 174, r: 36 } as const;
 const SHELF_YS = [300, 440] as const; // 棚の天板y
 const SLOT_XS = [96, 192, 288, 384] as const; // 棚の4スロットx
 const STAR_Y = 370; // 星が流れる高さ（棚の間）
@@ -631,11 +632,11 @@ function drawCork(ctx: CanvasRenderingContext2D, cork: Cork, now: number): void 
   });
 }
 
-/** 左下の残弾表示（コルク6個。使った分は空枠） */
+/** 左上の残弾表示（コルク6個。使った分は空枠）。下側だと操作中の指で隠れる */
 function drawAmmo(ctx: CanvasRenderingContext2D, ammo: number): void {
   for (let i = 0; i < MAX_AMMO; i++) {
     const x = 26 + i * 24;
-    const y = H - 26;
+    const y = 174;
     if (i < ammo) {
       paperCircle(ctx, x, y, 7, {
         fill: P.kraftLight,

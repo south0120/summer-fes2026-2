@@ -19,6 +19,8 @@ const H = 640;
 const GAME_TIME = 60;
 const POI_MAX = 3;
 const POI_R = 42;
+// ポイの丸は指のこのpx分上に出す（指で隠れないように）。持ち手は真下＝利き手を問わない
+const POI_OFFSET_Y = 70;
 const FLIGHT_T = 0.9; // 捕獲後、金魚鉢へ飛ぶ時間
 const RESPAWN_DELAY = 2.4;
 const BOWL = { x: W - 62, y: 62 };
@@ -841,10 +843,10 @@ function drawPoi(ctx: CanvasRenderingContext2D, s: Sim): void {
   const x = ptr.x;
   const y = ptr.y;
 
-  // 柄（右下へ伸びる木の棒）
+  // 柄（真下＝指の方向へ伸びる木の棒。利き手を問わず丸が隠れない）
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(Math.PI * 0.22);
+  ctx.rotate(Math.PI * 0.5);
   paperRect(ctx, r * 0.72, -7, r * 1.45, 14, {
     fill: P.wood,
     edge: P.woodDeep,
@@ -1012,10 +1014,18 @@ export default function GoldfishGame() {
         ((e.clientY - r.top) / r.height) * H,
       ];
     };
+    // ptrには「ポイの丸の中心」を入れる（指の位置からPOI_OFFSET_Y上）
+    const toPoi = (e: PointerEvent): [number, number] => {
+      const [x, y] = toLocal(e);
+      return [
+        Math.min(Math.max(x, 8), W - 8),
+        Math.min(Math.max(y - POI_OFFSET_Y, POI_R * 0.5), H - 8),
+      ];
+    };
     const onDown = (e: PointerEvent) => {
       const s = simRef.current;
       if (!s) return;
-      const [x, y] = toLocal(e);
+      const [x, y] = toPoi(e);
       s.ptr.x = x;
       s.ptr.y = y;
       s.ptr.on = true;
@@ -1027,7 +1037,7 @@ export default function GoldfishGame() {
     const onMove = (e: PointerEvent) => {
       const s = simRef.current;
       if (!s) return;
-      const [x, y] = toLocal(e);
+      const [x, y] = toPoi(e);
       s.ptr.x = x;
       s.ptr.y = y;
       s.ptr.on = true;
