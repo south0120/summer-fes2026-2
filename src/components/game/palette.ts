@@ -1,0 +1,22 @@
+/** ゲームCanvas共通のデザイントークン（サイトのTailwindパレットと同期） */
+export const P = {
+  night950: "#03122A",
+  night900: "#04182F",
+  night800: "#072341",
+  night700: "#0C2E52",
+  night600: "#143A63",
+  kraft: "#EED2AC",
+  kraftDeep: "#DDBE90",
+  kraftLight: "#F6E4C4",
+  paper: "#FBF0DA",
+  red: "#C4372A",
+  redDeep: "#93221A",
+  teal: "#1F7E6B",
+  tealDeep: "#145A4C",
+  gold: "#E8A93B",
+  goldDeep: "#B97F1D",
+  indigo: "#22335C",
+  ink: "#3A2E2A",
+  wood: "#A9743B",
+  woodDeep: "#7C5228",
+} as const;
