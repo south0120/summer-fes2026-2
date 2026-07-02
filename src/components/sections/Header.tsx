@@ -5,7 +5,6 @@ const NAV = [
   { label: "ポスター", href: "#posters" },
   { label: "屋台", href: "#stalls" },
   { label: "ミニゲーム", href: "#games" },
-  { label: "スケジュール", href: "#schedule" },
   { label: "お知らせ", href: "#news" },
   { label: "ヘルプ", href: "#help" },
 ];
