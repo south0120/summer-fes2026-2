@@ -24,7 +24,14 @@ const RESPAWN_DELAY = 2.4;
 const BOWL = { x: W - 62, y: 62 };
 
 type Phase = "ready" | "playing" | "result";
-type FishKind = "red" | "black" | "gold";
+type FishKind = "red" | "black" | "gold" | "rainbow";
+type EndReason = "time" | "poi";
+
+// 難化・レア魚・倍率まわりの定数
+const DIFF_MAX_BONUS = 0.5; // 終盤の速度倍率 = 1 + 0.5
+const MIX_SHIFT_AT = 30; // この経過秒以降は補充比率を変える
+const RAINBOW_LIFETIME = 6; // 虹金魚の滞在秒数
+const POI_BONUS_PER = 20; // 残ポイ1枚あたりのボーナス
 
 type FishDef = {
   points: number;
@@ -41,6 +48,8 @@ const FISH_DEF: Record<FishKind, FishDef> = {
   red: { points: 10, speed: 62, turn: 2.4, catchRate: 1, size: 17, body: P.red, tail: P.redDeep, count: 4 },
   black: { points: 20, speed: 108, turn: 3.4, catchRate: 0.7, size: 16, body: P.ink, tail: "#29201C", count: 2 },
   gold: { points: 30, speed: 152, turn: 4.2, catchRate: 0.5, size: 13, body: P.gold, tail: P.goldDeep, count: 1 },
+  // レア虹金魚: 経過20秒・40秒付近に出現、約6秒で退場（count 0 = 初期配置なし）
+  rainbow: { points: 50, speed: 188, turn: 5, catchRate: 0.4, size: 11, body: P.red, tail: P.teal, count: 0 },
 };
 
 type Fish = {
@@ -58,10 +67,20 @@ type Fish = {
   fx: number; // 捕獲時の出発点
   fy: number;
   entering: boolean; // 画面外から入場中
+  leaving: boolean; // 画面外へ退場中（虹金魚）
+  leaveAt: number; // 退場を始める経過秒（0 = 退場しない）
   seed: number;
 };
 
 type Ring = { x: number; y: number; r: number; vr: number; alpha: number };
+type Pop = {
+  x: number;
+  y: number;
+  text: string;
+  life: number;
+  maxLife: number;
+  seed: number;
+};
 type Scrap = {
   x: number;
   y: number;
@@ -85,9 +104,12 @@ type Sim = {
   bowl: FishKind[]; // 金魚鉢のアイコン（着水した魚）
   fishes: Fish[];
   respawns: { kind: FishKind; at: number }[];
+  rainbowAt: number[]; // 虹金魚の出現予定（経過秒・昇順）
+  poiBonus: number; // 時間切れ時の残ポイボーナス（結果表示用）
   ptr: { x: number; y: number; on: boolean; down: boolean };
   rings: Ring[];
   scraps: Scrap[];
+  pops: Pop[]; // 紙タグポップ（2匹どり！等）
   nextId: number;
 };
 
@@ -96,6 +118,7 @@ type Ui = {
   score: number;
   sec: number;
   poiLeft: number;
+  poiBonus: number;
   counts: Record<FishKind, number>;
 };
 
@@ -147,6 +170,8 @@ function spawnFish(kind: FishKind, id: number, fromEdge: boolean): Fish {
     fx: 0,
     fy: 0,
     entering: fromEdge,
+    leaving: false,
+    leaveAt: 0,
     seed: id * 17 + 3,
   };
   pickTarget(f);
@@ -174,23 +199,32 @@ function makeSim(): Sim {
     bowl: [],
     fishes,
     respawns: [],
+    // 20秒付近と40秒付近に1回ずつ（±1秒ゆらぎ）
+    rainbowAt: [19 + Math.random() * 2, 39 + Math.random() * 2],
+    poiBonus: 0,
     ptr: { x: W / 2, y: H / 2, on: false, down: false },
     rings: [],
     scraps: [],
+    pops: [],
     nextId: id,
   };
 }
 
-function endGame(s: Sim): void {
+function endGame(s: Sim, reason: EndReason): void {
   if (s.phase === "result") return;
   s.phase = "result";
   s.ptr.down = false;
+  // ポイ残しボーナス: 時間切れ終了時のみ（ポイ全滅なら0）
+  if (reason === "time" && s.poiLeft > 0) {
+    s.poiBonus = s.poiLeft * POI_BONUS_PER;
+    s.score += s.poiBonus;
+  }
   sfx.finish();
 }
 
-function moveFish(f: Fish, dt: number): void {
+function moveFish(f: Fish, dt: number, speedFactor: number): void {
   const def = FISH_DEF[f.kind];
-  let speed = def.speed * f.speedMul;
+  let speed = def.speed * f.speedMul * speedFactor;
   let turn = def.turn;
   if (f.state === "flee") {
     speed *= 2.5;
@@ -203,7 +237,7 @@ function moveFish(f: Fish, dt: number): void {
   }
   const dx = f.tx - f.x;
   const dy = f.ty - f.y;
-  if (dx * dx + dy * dy < 900) pickTarget(f);
+  if (!f.leaving && dx * dx + dy * dy < 900) pickTarget(f);
   const want = Math.atan2(f.ty - f.y, f.tx - f.x);
   let diff = want - f.angle;
   while (diff > Math.PI) diff -= Math.PI * 2;
@@ -214,7 +248,10 @@ function moveFish(f: Fish, dt: number): void {
   const M = 24;
   if (f.entering) {
     if (f.x > M && f.x < W - M && f.y > M && f.y < H - M) f.entering = false;
-  } else if (f.x < M || f.x > W - M || f.y < M || f.y > H - M) {
+  } else if (
+    !f.leaving &&
+    (f.x < M || f.x > W - M || f.y < M || f.y > H - M)
+  ) {
     f.x = clamp(f.x, M, W - M);
     f.y = clamp(f.y, M, H - M);
     pickTarget(f);
@@ -246,7 +283,9 @@ function scoop(s: Sim): void {
   const { x, y } = s.ptr;
   let hits = 0;
   let fails = 0;
+  let basePts = 0;
   let gotGold = false;
+  let gotRainbow = false;
   for (const f of s.fishes) {
     if (f.state === "caught") continue;
     const d2 = (f.x - x) ** 2 + (f.y - y) ** 2;
@@ -257,10 +296,11 @@ function scoop(s: Sim): void {
       f.stateT = 0;
       f.fx = f.x;
       f.fy = f.y;
-      s.score += def.points;
+      basePts += def.points;
       s.caught.push(f.kind);
       hits++;
       if (f.kind === "gold") gotGold = true;
+      if (f.kind === "rainbow") gotRainbow = true;
     } else {
       f.state = "flee";
       f.stateT = 1.15;
@@ -270,8 +310,27 @@ function scoop(s: Sim): void {
       fails++;
     }
   }
+  // 一網打尽倍率: 2匹 → ×1.5 / 3匹以上 → ×2
+  const mult = hits >= 3 ? 2 : hits === 2 ? 1.5 : 1;
+  s.score += Math.round(basePts * mult);
+  // 紙タグポップ（ポイ位置の少し上に積む）
+  let popY = y - POI_R - 20;
+  const addPop = (text: string) => {
+    s.pops.push({
+      x: clamp(x, 84, W - 84),
+      y: clamp(popY, 48, H - 40),
+      text,
+      life: 1.15,
+      maxLife: 1.15,
+      seed: s.nextId * 7 + s.pops.length * 13,
+    });
+    popY -= 36;
+  };
+  if (gotRainbow) addPop("虹金魚！+50");
+  if (hits === 2) addPop("2匹どり！×1.5");
+  else if (hits >= 3) addPop(`${hits}匹どり！×2`);
   if (hits > 0) {
-    if (gotGold) sfx.bigHit();
+    if (gotGold || gotRainbow || hits >= 2) sfx.bigHit();
     else sfx.hit();
   } else if (fails > 0) {
     sfx.miss();
@@ -289,29 +348,41 @@ function scoop(s: Sim): void {
 
 function update(s: Sim, dt: number): void {
   s.t += dt;
+  const elapsed = clamp(GAME_TIME - s.time, 0, GAME_TIME);
+  // 時間経過で難化: 遊泳速度倍率 1 → 1.5（プレイ中のみ）
+  const speedFactor =
+    s.phase === "playing" ? 1 + DIFF_MAX_BONUS * (elapsed / GAME_TIME) : 1;
 
   if (s.phase === "playing") {
     const prevSec = Math.ceil(s.time);
     s.time -= dt;
     const sec = Math.max(0, Math.ceil(s.time));
     if (sec !== prevSec && sec <= 5 && sec >= 1) sfx.tick();
-    if (s.time <= 0) endGame(s);
+    if (s.time <= 0) endGame(s, "time");
 
     if (s.poiBrokenT > 0) {
       s.poiBrokenT -= dt;
       if (s.poiBrokenT <= 0) {
-        if (s.poiLeft <= 0) endGame(s);
+        if (s.poiLeft <= 0) endGame(s, "poi");
         else s.poiDamage = 0; // 新しいポイ支給
       }
     }
 
-    // 補充（同じ種類が画面端から）
+    // 補充（画面端から）
     if (s.respawns.length > 0) {
       const due = s.respawns.filter((r) => r.at <= s.t);
       if (due.length > 0) {
         s.respawns = s.respawns.filter((r) => r.at > s.t);
         for (const r of due) s.fishes.push(spawnFish(r.kind, s.nextId++, true));
       }
+    }
+
+    // 虹金魚の出現（経過20秒・40秒付近）
+    while (s.rainbowAt.length > 0 && elapsed >= s.rainbowAt[0]) {
+      s.rainbowAt.shift();
+      const rb = spawnFish("rainbow", s.nextId++, true);
+      rb.leaveAt = elapsed + RAINBOW_LIFETIME;
+      s.fishes.push(rb);
     }
   }
 
@@ -322,12 +393,32 @@ function update(s: Sim, dt: number): void {
       f.stateT += dt;
       if (f.stateT >= FLIGHT_T) {
         s.bowl.push(f.kind);
-        s.respawns.push({ kind: f.kind, at: s.t + RESPAWN_DELAY });
+        if (f.kind !== "rainbow") {
+          // 経過30秒以降の補充はデメキン/金の比率を上げる
+          let kind: FishKind = f.kind;
+          if (elapsed >= MIX_SHIFT_AT) {
+            const r = Math.random();
+            kind = r < 0.4 ? "red" : r < 0.75 ? "black" : "gold";
+          }
+          s.respawns.push({ kind, at: s.t + RESPAWN_DELAY });
+        }
         s.fishes.splice(i, 1);
       }
       continue;
     }
-    moveFish(f, dt);
+    // 虹金魚の退場（毎フレーム画面外へ steer し、flee で上書きされても復帰）
+    if (f.leaveAt > 0 && elapsed >= f.leaveAt && f.state === "swim") {
+      f.leaving = true;
+      f.tx = f.x < W / 2 ? -80 : W + 80;
+      f.ty = f.y;
+    }
+    moveFish(f, dt, speedFactor);
+    if (
+      f.leaving &&
+      (f.x < -60 || f.x > W + 60 || f.y < -60 || f.y > H + 60)
+    ) {
+      s.fishes.splice(i, 1);
+    }
   }
 
   // 波紋・紙くず
@@ -343,6 +434,11 @@ function update(s: Sim, dt: number): void {
     sc.rot += sc.vr * dt;
     sc.life -= dt;
     return sc.life > 0;
+  });
+  s.pops = s.pops.filter((p) => {
+    p.y -= 26 * dt;
+    p.life -= dt;
+    return p.life > 0;
   });
 }
 
@@ -522,6 +618,33 @@ function drawFish(ctx: CanvasRenderingContext2D, f: Fish): void {
     ctx.beginPath();
     ctx.ellipse(s * 0.1, -s * 0.08, s * 0.26, s * 0.12, 0, 0, Math.PI * 2);
     ctx.fill();
+  } else if (f.kind === "rainbow") {
+    // 多色パッチ（切り紙パッチワーク）: ボディ楕円でクリップして重ねる
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s, s * 0.62, 0, 0, Math.PI * 2);
+    ctx.clip();
+    const patches: [string, number, number, number][] = [
+      [P.gold, -0.5, -0.45, 0.55],
+      [P.teal, 0.3, 0.4, 0.5],
+      [P.paper, 0.55, -0.35, 0.4],
+    ];
+    patches.forEach(([col, ox, oy, pr], pi) => {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      const n = 7;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2;
+        const rr = pr * s + seededJitter(f.seed + 20 + pi, k, s * 0.12);
+        const px2 = ox * s + Math.cos(a) * rr;
+        const py2 = oy * s + Math.sin(a) * rr * 0.8;
+        if (k === 0) ctx.moveTo(px2, py2);
+        else ctx.lineTo(px2, py2);
+      }
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.restore();
   }
 
   // 目
@@ -544,6 +667,31 @@ function drawFish(ctx: CanvasRenderingContext2D, f: Fish): void {
       ctx.arc(s * 0.55, dir * s * 0.2, s * 0.09, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  // 虹金魚: 尾に沿った小さな星のきらきら（phase 駆動でちらつきなし）
+  if (f.kind === "rainbow" && f.state !== "caught") {
+    for (let i = 0; i < 4; i++) {
+      const ph = f.phase * 0.8 + i * 1.7;
+      const sx = -s * (1.25 + i * 0.55) + Math.sin(ph) * 3;
+      const sy = Math.sin(ph * 1.3) * s * 0.5;
+      const tw = 0.5 + 0.5 * Math.sin(ph * 2.3);
+      const r2 = 1.3 + tw * 1.2;
+      ctx.globalAlpha = 0.3 + tw * 0.5;
+      ctx.fillStyle = i % 2 === 0 ? "#FFE9A8" : P.paper;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - r2 * 2);
+      ctx.lineTo(sx + r2 * 0.55, sy - r2 * 0.55);
+      ctx.lineTo(sx + r2 * 2, sy);
+      ctx.lineTo(sx + r2 * 0.55, sy + r2 * 0.55);
+      ctx.lineTo(sx, sy + r2 * 2);
+      ctx.lineTo(sx - r2 * 0.55, sy + r2 * 0.55);
+      ctx.lineTo(sx - r2 * 2, sy);
+      ctx.lineTo(sx - r2 * 0.55, sy - r2 * 0.55);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   ctx.restore();
@@ -586,10 +734,11 @@ function drawBowl(ctx: CanvasRenderingContext2D, bowl: FishKind[], t: number): v
     ctx.save();
     ctx.translate(ix, iy);
     ctx.rotate(a + Math.PI / 2);
-    ctx.fillStyle = FISH_DEF[k].body;
+    ctx.fillStyle = k === "rainbow" ? P.gold : FISH_DEF[k].body;
     ctx.beginPath();
     ctx.ellipse(0, 0, 5, 3.2, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = k === "rainbow" ? P.teal : FISH_DEF[k].body;
     ctx.beginPath();
     ctx.moveTo(-4, 0);
     ctx.lineTo(-8.5, -3.2);
@@ -608,6 +757,38 @@ function drawRings(ctx: CanvasRenderingContext2D, s: Sim): void {
     ctx.beginPath();
     ctx.arc(rg.x, rg.y, rg.r, 0, Math.PI * 2);
     ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** 紙タグポップ（「2匹どり！×1.5」「虹金魚！+50」） */
+function drawPops(ctx: CanvasRenderingContext2D, s: Sim): void {
+  for (const p of s.pops) {
+    const born = p.maxLife - p.life;
+    const appear = Math.min(1, born / 0.12); // ぽんっと出る
+    const alpha = clamp(p.life / 0.35, 0, 1) * appear;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(seededJitter(p.seed, 0, 0.07));
+    ctx.scale(0.75 + 0.25 * appear, 0.75 + 0.25 * appear);
+    ctx.globalAlpha = alpha;
+    ctx.font =
+      "900 17px 'Zen Maru Gothic','Hiragino Maru Gothic ProN',sans-serif";
+    const w = ctx.measureText(p.text).width;
+    paperRect(ctx, -w / 2 - 11, -15, w + 22, 30, {
+      fill: P.kraftLight,
+      edge: P.red,
+      edgeWidth: 2,
+      jitter: 2,
+      seed: p.seed,
+      shadow: "rgba(0,0,0,.35)",
+      shadowDy: 3,
+    });
+    ctx.fillStyle = P.redDeep;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(p.text, 0, 1);
+    ctx.restore();
   }
   ctx.globalAlpha = 1;
 }
@@ -739,14 +920,15 @@ function render(ctx: CanvasRenderingContext2D, s: Sim): void {
   for (const f of s.fishes) if (f.state === "caught") drawFish(ctx, f);
   drawScraps(ctx, s);
   if (s.phase === "playing" && s.ptr.on) drawPoi(ctx, s);
+  drawPops(ctx, s);
 }
 
 /* ================= コンポーネント ================= */
 
 function rankTitle(score: number): string {
-  if (score >= 120) return "金魚名人！";
-  if (score >= 70) return "いい感じ！";
-  if (score >= 30) return "もうちょい！";
+  if (score >= 250) return "金魚名人！";
+  if (score >= 150) return "いい感じ！";
+  if (score >= 60) return "もうちょい！";
   return "また挑戦してね";
 }
 
@@ -764,22 +946,29 @@ export default function GoldfishGame() {
     score: 0,
     sec: GAME_TIME,
     poiLeft: POI_MAX,
-    counts: { red: 0, black: 0, gold: 0 },
+    poiBonus: 0,
+    counts: { red: 0, black: 0, gold: 0, rainbow: 0 },
   });
 
   const pushUi = useCallback(() => {
     const s = simRef.current;
     if (!s) return;
-    const counts: Record<FishKind, number> = { red: 0, black: 0, gold: 0 };
+    const counts: Record<FishKind, number> = {
+      red: 0,
+      black: 0,
+      gold: 0,
+      rainbow: 0,
+    };
     for (const k of s.caught) counts[k]++;
     const next: Ui = {
       phase: s.phase,
       score: s.score,
       sec: Math.max(0, Math.ceil(s.time)),
       poiLeft: Math.max(0, s.poiLeft),
+      poiBonus: s.poiBonus,
       counts,
     };
-    const key = `${next.phase}|${next.score}|${next.sec}|${next.poiLeft}|${counts.red},${counts.black},${counts.gold}`;
+    const key = `${next.phase}|${next.score}|${next.sec}|${next.poiLeft}|${next.poiBonus}|${counts.red},${counts.black},${counts.gold},${counts.rainbow}`;
     if (key !== uiKeyRef.current) {
       uiKeyRef.current = key;
       setUi(next);
@@ -880,7 +1069,8 @@ export default function GoldfishGame() {
     };
   }, [pushUi]);
 
-  const total = ui.counts.red + ui.counts.black + ui.counts.gold;
+  const total =
+    ui.counts.red + ui.counts.black + ui.counts.gold + ui.counts.rainbow;
 
   const scoreboard = (
     <div className="flex items-center justify-between font-maru text-sm font-black">
@@ -903,9 +1093,12 @@ export default function GoldfishGame() {
           おして沈めて、はなしてすくう！
         </p>
         <p className="mt-1.5 font-maru text-xs font-bold">ポイは3枚・60秒</p>
-        <p className="mt-1 font-maru text-xs font-bold text-fes-ink/75">
-          すばしっこい魚は逃げられやすい
-        </p>
+        <ul className="mt-2 space-y-0.5 text-left font-maru text-xs font-bold text-fes-ink/80">
+          <li>・まとめてすくうと倍率アップ（2匹×1.5 / 3匹×2）</li>
+          <li>・時間がたつと魚がすばやくなる</li>
+          <li>・🌈 レアな虹金魚は50点</li>
+          <li>・ポイを残して終わるとボーナス</li>
+        </ul>
         <button type="button" onClick={start} className={`mt-5 ${BTN_CLASS}`}>
           はじめる
         </button>
@@ -921,7 +1114,11 @@ export default function GoldfishGame() {
           {rankTitle(ui.score)}
         </h2>
         <p className="mt-2 font-maru text-sm font-bold">
-          🔴×{ui.counts.red}　⚫×{ui.counts.black}　🟡×{ui.counts.gold}
+          🔴×{ui.counts.red}　⚫×{ui.counts.black}　🟡×{ui.counts.gold}　🌈×
+          {ui.counts.rainbow}
+        </p>
+        <p className="mt-1 font-maru text-xs font-bold text-fes-ink/75">
+          ポイのこりボーナス +{ui.poiBonus}
         </p>
         <button type="button" onClick={start} className={`mt-5 ${BTN_CLASS}`}>
           もう一回

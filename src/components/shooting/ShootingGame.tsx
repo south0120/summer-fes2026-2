@@ -24,7 +24,16 @@ const SHELF_YS = [300, 440] as const; // 棚の天板y
 const SLOT_XS = [96, 192, 288, 384] as const; // 棚の4スロットx
 const STAR_Y = 370; // 星が流れる高さ（棚の間）
 const BALLOON_COLORS = [P.red, P.teal, P.gold] as const;
-const POINTS = { balloon: 10, can: 20, star: 30 } as const;
+const POINTS = { balloon: 10, can: 20, star: 30, shiba: 100 } as const;
+const MAX_COMBO_STEPS = 10; // コンボ倍率の上限段数（最大×2.0）
+
+/** ウェーブ設定（30秒を3分割）。size=的サイズ係数 / speed=揺れ・流れ速度係数 / mult=得点倍率 */
+const WAVES = [
+  { size: 1, speed: 1, mult: 1 },
+  { size: 0.85, speed: 1.3, mult: 1.5 },
+  { size: 0.7, speed: 1.6, mult: 2 },
+] as const;
+const SHIBA_MAX_SPAWNS = 2; // 金のしばは1ゲーム計2回まで
 
 /* ============================== 型 ============================== */
 
@@ -49,6 +58,17 @@ type Star = {
   seed: number;
   respawnAt: number;
 };
+
+type Shiba = {
+  alive: boolean;
+  x: number;
+  vx: number; // 基準速度。ウェーブ速度係数はupdate側で乗算
+  seed: number;
+  spawnsLeft: number;
+  nextAt: number; // aliveでない時、この時刻(秒)以降に出現可
+};
+
+type WaveBanner = { text: string; sub: string; start: number; until: number };
 
 type Confetti = {
   x: number;
@@ -94,24 +114,44 @@ function makeTargets(): SlotTarget[] {
   return out;
 }
 
-/** 的の現在の中心座標（描画と当たり判定で共有） */
-function slotCenter(t: SlotTarget, now: number): { x: number; y: number } {
+/** 経過秒→ウェーブindex(0..2) */
+function waveIndexAt(elapsed: number): number {
+  return elapsed >= 20 ? 2 : elapsed >= 10 ? 1 : 0;
+}
+
+/** コンボ倍率 = 1 + 0.1 × min(combo - 1, 10)（最大×2.0） */
+function comboMultiplier(combo: number): number {
+  return 1 + 0.1 * Math.min(Math.max(combo, 1) - 1, MAX_COMBO_STEPS);
+}
+
+/** 的の現在の中心座標（描画と当たり判定で共有）。speedK=揺れ速度係数 sizeK=サイズ係数 */
+function slotCenter(
+  t: SlotTarget,
+  now: number,
+  speedK: number,
+  sizeK: number,
+): { x: number; y: number } {
   const baseX = SLOT_XS[t.slot];
   const shelfY = SHELF_YS[t.shelf];
   if (t.kind === "balloon") {
     return {
-      x: baseX + Math.sin(now * 1.4 + t.phase) * 7,
-      y: shelfY - 58 + Math.sin(now * 2.2 + t.phase) * 3,
+      x: baseX + Math.sin(now * 1.4 * speedK + t.phase) * 7,
+      y: shelfY - 58 + Math.sin(now * 2.2 * speedK + t.phase) * 3,
     };
   }
-  // 缶: たまに小刻みに揺れる
-  const cycle = (now + t.phase * 1.7) % 4.2;
+  // 缶: たまに小刻みに揺れる（縮んでも棚に接地させる）
+  const cycle = (now * speedK + t.phase * 1.7) % 4.2;
   const jiggle = cycle < 0.3 ? Math.sin(now * 45) * 1.5 : 0;
-  return { x: baseX + jiggle, y: shelfY - 20 };
+  return { x: baseX + jiggle, y: shelfY - 20 * sizeK };
 }
 
 function starPos(star: Star, now: number): { x: number; y: number } {
   return { x: star.x, y: STAR_Y + Math.sin(now * 3 + star.seed) * 8 };
+}
+
+/** 金のしばのy（棚の間を小走りで横切る） */
+function shibaY(now: number): number {
+  return STAR_Y + 4 - Math.abs(Math.sin(now * 9)) * 5;
 }
 
 /** 五芒星の頂点列 */
@@ -132,14 +172,20 @@ function starPts(
 }
 
 function titleFor(score: number): string {
-  if (score >= 200) return "射的マスター！";
-  if (score >= 120) return "いい腕前！";
-  if (score >= 50) return "もうちょい！";
+  if (score >= 500) return "射的マスター！";
+  if (score >= 300) return "いい腕前！";
+  if (score >= 100) return "もうちょい！";
   return "また挑戦してね";
 }
 
-function burst(list: Confetti[], x: number, y: number, colors: string[]): void {
-  for (let i = 0; i < 14; i++) {
+function burst(
+  list: Confetti[],
+  x: number,
+  y: number,
+  colors: string[],
+  count = 14,
+): void {
+  for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
     const sp = 60 + Math.random() * 160;
     list.push({
@@ -234,29 +280,31 @@ function drawBalloon(
   ctx: CanvasRenderingContext2D,
   t: SlotTarget,
   now: number,
+  speedK: number,
+  sizeK: number,
 ): void {
-  const c = slotCenter(t, now);
+  const c = slotCenter(t, now, speedK, sizeK);
   const anchorX = SLOT_XS[t.slot];
   const shelfY = SHELF_YS[t.shelf];
   // ひも
   ctx.strokeStyle = "rgba(251,240,218,.55)";
   ctx.lineWidth = 1.4;
   ctx.beginPath();
-  ctx.moveTo(c.x, c.y + 26);
+  ctx.moveTo(c.x, c.y + 26 * sizeK);
   ctx.quadraticCurveTo(anchorX + (c.x - anchorX) * 0.4, (c.y + shelfY) / 2 + 8, anchorX, shelfY);
   ctx.stroke();
   // 結び目
   paperPoly(
     ctx,
     [
-      [c.x - 5, c.y + 28],
-      [c.x + 5, c.y + 28],
-      [c.x, c.y + 20],
+      [c.x - 5 * sizeK, c.y + 28 * sizeK],
+      [c.x + 5 * sizeK, c.y + 28 * sizeK],
+      [c.x, c.y + 20 * sizeK],
     ],
     { fill: t.color, seed: t.seed + 1, jitter: 0.8, shadow: "" },
   );
   // 本体
-  paperCircle(ctx, c.x, c.y, 24, {
+  paperCircle(ctx, c.x, c.y, 24 * sizeK, {
     fill: t.color,
     seed: t.seed,
     jitter: 1.6,
@@ -265,7 +313,15 @@ function drawBalloon(
   // ハイライト
   ctx.fillStyle = "rgba(251,240,218,.45)";
   ctx.beginPath();
-  ctx.ellipse(c.x - 8, c.y - 8, 6, 9, -0.5, 0, Math.PI * 2);
+  ctx.ellipse(
+    c.x - 8 * sizeK,
+    c.y - 8 * sizeK,
+    6 * sizeK,
+    9 * sizeK,
+    -0.5,
+    0,
+    Math.PI * 2,
+  );
   ctx.fill();
 }
 
@@ -273,31 +329,34 @@ function drawCan(
   ctx: CanvasRenderingContext2D,
   t: SlotTarget,
   now: number,
+  speedK: number,
+  sizeK: number,
 ): void {
-  const c = slotCenter(t, now);
+  const c = slotCenter(t, now, speedK, sizeK);
+  const k = sizeK;
   // 本体 32x40
-  paperRect(ctx, c.x - 16, c.y - 20, 32, 40, {
+  paperRect(ctx, c.x - 16 * k, c.y - 20 * k, 32 * k, 40 * k, {
     fill: P.teal,
     seed: t.seed,
     jitter: 1.8,
     shadowDy: 4,
   });
   // 上蓋
-  paperRect(ctx, c.x - 15, c.y - 21, 30, 5, {
+  paperRect(ctx, c.x - 15 * k, c.y - 21 * k, 30 * k, 5 * k, {
     fill: P.tealDeep,
     seed: t.seed + 3,
     jitter: 1,
     shadow: "",
   });
   // 紙ラベル
-  paperRect(ctx, c.x - 16, c.y - 7, 32, 14, {
+  paperRect(ctx, c.x - 16 * k, c.y - 7 * k, 32 * k, 14 * k, {
     fill: P.paper,
     seed: t.seed + 1,
     jitter: 1.2,
     shadow: "",
   });
   // ラベルの丸マーク
-  paperCircle(ctx, c.x, c.y, 4.2, {
+  paperCircle(ctx, c.x, c.y, 4.2 * k, {
     fill: P.red,
     seed: t.seed + 2,
     jitter: 0.6,
@@ -310,8 +369,9 @@ function drawStar(
   pos: { x: number; y: number },
   seed: number,
   now: number,
+  sizeK: number,
 ): void {
-  paperPoly(ctx, starPts(pos.x, pos.y, 17, 7.5, now * 2.4), {
+  paperPoly(ctx, starPts(pos.x, pos.y, 17 * sizeK, 7.5 * sizeK, now * 2.4), {
     fill: P.gold,
     seed: 400 + seed,
     jitter: 1,
@@ -319,12 +379,152 @@ function drawStar(
     edgeWidth: 1.8,
     shadowDy: 3,
   });
-  paperCircle(ctx, pos.x, pos.y, 3.5, {
+  paperCircle(ctx, pos.x, pos.y, 3.5 * sizeK, {
     fill: P.goldDeep,
     seed: 401 + seed,
     jitter: 0.5,
     shadow: "",
   });
+}
+
+/** 金のしば（丸い頭+三角耳2つ+小さい体のシンプルな犬シルエット）。進行方向を向く */
+function drawShiba(
+  ctx: CanvasRenderingContext2D,
+  shiba: Shiba,
+  y: number,
+): void {
+  const dir = shiba.vx >= 0 ? 1 : -1;
+  const s = shiba.seed;
+  ctx.save();
+  ctx.translate(shiba.x, y);
+  ctx.scale(dir, 1);
+  // しっぽ（三角で簡略化）
+  paperPoly(
+    ctx,
+    [
+      [-22, -4],
+      [-30, -15],
+      [-18, -11],
+    ],
+    { fill: P.goldDeep, seed: s + 5, jitter: 1, shadow: "" },
+  );
+  // 小さい体
+  paperRect(ctx, -22, -8, 30, 19, {
+    fill: P.gold,
+    seed: s + 1,
+    jitter: 1.6,
+    shadowDy: 3,
+  });
+  // 脚
+  paperRect(ctx, -18, 9, 6, 7, { fill: P.goldDeep, seed: s + 6, jitter: 0.8, shadow: "" });
+  paperRect(ctx, -2, 9, 6, 7, { fill: P.goldDeep, seed: s + 7, jitter: 0.8, shadow: "" });
+  // 三角耳 ×2
+  paperPoly(
+    ctx,
+    [
+      [4, -16],
+      [8, -28],
+      [13, -16],
+    ],
+    { fill: P.goldDeep, seed: s + 3, jitter: 1, shadow: "" },
+  );
+  paperPoly(
+    ctx,
+    [
+      [13, -15],
+      [18, -27],
+      [22, -14],
+    ],
+    { fill: P.goldDeep, seed: s + 4, jitter: 1, shadow: "" },
+  );
+  // 丸い頭
+  paperCircle(ctx, 13, -8, 11, {
+    fill: P.gold,
+    seed: s + 2,
+    jitter: 1.2,
+    edge: P.paper,
+    edgeWidth: 1.6,
+    shadowDy: 3,
+  });
+  // マズル
+  paperCircle(ctx, 19, -4, 4, { fill: P.paper, seed: s + 8, jitter: 0.6, shadow: "" });
+  // 目・鼻
+  ctx.fillStyle = P.ink;
+  ctx.beginPath();
+  ctx.arc(12, -10, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(21, -6, 1.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** 照準上のコンボ紙タグ「5 COMBO ×1.5」。popでヒット直後に少し膨らむ */
+function drawComboTag(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  combo: number,
+  pop: number,
+): void {
+  const label = `${combo} COMBO ×${comboMultiplier(combo).toFixed(1)}`;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(pop, pop);
+  ctx.rotate(-0.05);
+  ctx.font = '900 13px "Zen Maru Gothic", sans-serif';
+  const w = ctx.measureText(label).width + 18;
+  paperRect(ctx, -w / 2, -12, w, 24, {
+    fill: P.paper,
+    seed: 777,
+    jitter: 1.3,
+    shadowDy: 3,
+  });
+  ctx.fillStyle = P.red;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, 0, 1);
+  ctx.restore();
+}
+
+/** ウェーブ切替の紙タグ演出（1秒・ポップイン→フェードアウト） */
+function drawWaveBanner(
+  ctx: CanvasRenderingContext2D,
+  banner: WaveBanner,
+  now: number,
+): void {
+  const t = (now - banner.start) / (banner.until - banner.start);
+  if (t < 0 || t >= 1) return;
+  const popIn = Math.min(1, t / 0.12);
+  const scale = 0.7 + 0.3 * popIn + (t < 0.2 ? Math.sin((t / 0.2) * Math.PI) * 0.06 : 0);
+  const alpha = t > 0.75 ? 1 - (t - 0.75) / 0.25 : 1;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(W / 2, H * 0.42);
+  ctx.scale(scale, scale);
+  ctx.rotate(-0.03);
+  paperRect(ctx, -110, -44, 220, 88, {
+    fill: P.paper,
+    seed: 888,
+    jitter: 2.4,
+    shadowDy: 6,
+  });
+  paperRect(ctx, -110, -44, 220, 10, {
+    fill: P.red,
+    seed: 889,
+    jitter: 1.5,
+    shadow: "",
+  });
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = P.indigo;
+  ctx.font = '900 34px "Zen Maru Gothic", sans-serif';
+  ctx.fillText(banner.text, 0, -4);
+  ctx.fillStyle = P.red;
+  ctx.font = '900 15px "Zen Maru Gothic", sans-serif';
+  ctx.fillText(banner.sub, 0, 26);
+  ctx.restore();
+  ctx.globalAlpha = 1;
 }
 
 function drawConfetti(ctx: CanvasRenderingContext2D, list: Confetti[]): void {
@@ -391,11 +591,13 @@ export default function ShootingGame() {
   const [phase, setPhase] = useState<Phase>("ready");
   const [score, setScore] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(GAME_SECONDS);
+  const [maxCombo, setMaxCombo] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const phaseRef = useRef<Phase>("ready");
   const scoreRef = useRef(0);
   const secondsShownRef = useRef(GAME_SECONDS);
+  const startAtRef = useRef(0);
   const endAtRef = useRef(0);
   const lastShotRef = useRef(-1e9);
   const aimRef = useRef({ x: W / 2, y: H * 0.6, visible: false });
@@ -407,6 +609,19 @@ export default function ShootingGame() {
     seed: 3,
     respawnAt: 0,
   });
+  const shibaRef = useRef<Shiba>({
+    alive: false,
+    x: -60,
+    vx: 260,
+    seed: 0,
+    spawnsLeft: 0,
+    nextAt: 0,
+  });
+  const waveRef = useRef(0); // WAVES のindex(0..2)
+  const waveBannerRef = useRef<WaveBanner | null>(null);
+  const comboRef = useRef(0);
+  const maxComboRef = useRef(0);
+  const comboHitAtRef = useRef(-1e9); // タグのポップ演出用
   const confettiRef = useRef<Confetti[]>([]);
   const holesRef = useRef<Hole[]>([]);
 
@@ -414,6 +629,7 @@ export default function ShootingGame() {
     ensureAudio();
     sfx.tap();
     const now = performance.now() / 1000;
+    startAtRef.current = now;
     endAtRef.current = now + GAME_SECONDS;
     scoreRef.current = 0;
     setScore(0);
@@ -430,6 +646,20 @@ export default function ShootingGame() {
       seed: Math.floor(Math.random() * 100),
       respawnAt: now + 1.6,
     };
+    shibaRef.current = {
+      alive: false,
+      x: -60,
+      vx: 260,
+      seed: Math.floor(Math.random() * 1000),
+      spawnsLeft: SHIBA_MAX_SPAWNS,
+      nextAt: now + 11 + Math.random() * 6, // WAVE2に入って少ししてから
+    };
+    waveRef.current = 0;
+    waveBannerRef.current = null;
+    comboRef.current = 0;
+    maxComboRef.current = 0;
+    setMaxCombo(0);
+    comboHitAtRef.current = -1e9;
     phaseRef.current = "playing";
     setPhase("playing");
   };
@@ -480,6 +710,19 @@ export default function ShootingGame() {
       lastShotRef.current = now;
       sfx.whoosh();
 
+      const wave = WAVES[waveRef.current];
+
+      // ヒット共通処理: コンボ更新 → 得点 = round(基礎点 × ウェーブ倍率 × コンボ倍率)
+      const registerHit = (base: number) => {
+        comboRef.current += 1;
+        comboHitAtRef.current = now;
+        if (comboRef.current > maxComboRef.current) {
+          maxComboRef.current = comboRef.current;
+          setMaxCombo(comboRef.current);
+        }
+        addScore(Math.round(base * wave.mult * comboMultiplier(comboRef.current)));
+      };
+
       type Hit = { dist: number; apply: () => void };
       let best: Hit | null = null;
       const consider = (dist: number, limit: number, apply: () => void) => {
@@ -488,27 +731,44 @@ export default function ShootingGame() {
         }
       };
 
+      const shiba = shibaRef.current;
+      if (shiba.alive) {
+        const sy = shibaY(now);
+        consider(Math.hypot(x - shiba.x, y - sy), 27, () => {
+          shiba.alive = false;
+          shiba.nextAt = now + 2.5 + Math.random() * 5;
+          registerHit(POINTS.shiba);
+          burst(
+            confettiRef.current,
+            shiba.x,
+            sy,
+            [P.gold, P.goldDeep, P.paper, P.red],
+            32,
+          );
+          sfx.bigHit();
+        });
+      }
       const star = starRef.current;
       if (star.alive) {
         const sp = starPos(star, now);
-        consider(Math.hypot(x - sp.x, y - sp.y), 24, () => {
+        consider(Math.hypot(x - sp.x, y - sp.y), 24 * wave.size, () => {
           star.alive = false;
           star.respawnAt = now + RESPAWN_DELAY;
-          addScore(POINTS.star);
+          registerHit(POINTS.star);
           burst(confettiRef.current, sp.x, sp.y, [P.gold, P.paper, P.goldDeep]);
           sfx.bigHit();
         });
       }
       for (const t of targetsRef.current) {
         if (!t.alive) continue;
-        const c = slotCenter(t, now);
+        const c = slotCenter(t, now, wave.speed, wave.size);
         consider(
           Math.hypot(x - c.x, y - c.y),
-          t.kind === "balloon" ? 27 : 26,
+          (t.kind === "balloon" ? 27 : 26) * wave.size,
           () => {
             t.alive = false;
             t.respawnAt = now + RESPAWN_DELAY;
-            addScore(POINTS[t.kind]);
+            registerHit(POINTS[t.kind]);
             if (t.kind === "balloon") {
               burst(confettiRef.current, c.x, c.y, [t.color, P.paper, P.kraftLight]);
               sfx.pop();
@@ -522,7 +782,8 @@ export default function ShootingGame() {
       if (best !== null) {
         (best as Hit).apply();
       } else {
-        // ミス: 小さな紙の穴のみ（連射で耳障りなので無音）
+        // ミス: コンボ切れ + 小さな紙の穴のみ（連射で耳障りなので無音）
+        comboRef.current = 0;
         holesRef.current.push({ x, y, until: now + 0.5 });
       }
     };
@@ -577,10 +838,24 @@ export default function ShootingGame() {
         return;
       }
 
+      // ウェーブ進行（30秒を3分割）
+      const waveIdx = waveIndexAt(now - startAtRef.current);
+      if (waveIdx !== waveRef.current) {
+        waveRef.current = waveIdx;
+        waveBannerRef.current = {
+          text: `WAVE ${waveIdx + 1}`,
+          sub: `スコア ×${WAVES[waveIdx].mult.toFixed(1)}`,
+          start: now,
+          until: now + 1,
+        };
+        sfx.hit();
+      }
+      const speedK = WAVES[waveRef.current].speed;
+
       // 星（棚の間を左右に流れる・最大1個）
       const star = starRef.current;
       if (star.alive) {
-        star.x += star.vx * dt;
+        star.x += star.vx * speedK * dt;
         if (star.vx > 0 && star.x > W + 40) star.x = -40;
         if (star.vx < 0 && star.x < -40) star.x = W + 40;
       } else if (now >= star.respawnAt) {
@@ -589,6 +864,30 @@ export default function ShootingGame() {
         star.vx = dir * (150 + Math.random() * 50);
         star.x = dir > 0 ? -30 : W + 30;
         star.seed = Math.floor(Math.random() * 1000);
+      }
+
+      // 金のしば（WAVE2以降・計2回まで・星より速く一度だけ横切る）
+      const shiba = shibaRef.current;
+      if (shiba.alive) {
+        shiba.x += shiba.vx * speedK * dt;
+        if (
+          (shiba.vx > 0 && shiba.x > W + 60) ||
+          (shiba.vx < 0 && shiba.x < -60)
+        ) {
+          shiba.alive = false;
+          shiba.nextAt = now + 2.5 + Math.random() * 5;
+        }
+      } else if (
+        shiba.spawnsLeft > 0 &&
+        waveRef.current >= 1 &&
+        now >= shiba.nextAt
+      ) {
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        shiba.alive = true;
+        shiba.spawnsLeft -= 1;
+        shiba.vx = dir * (240 + Math.random() * 60);
+        shiba.x = dir > 0 ? -50 : W + 50;
+        shiba.seed = Math.floor(Math.random() * 1000);
       }
 
       // 棚スロットのrespawn
@@ -613,13 +912,16 @@ export default function ShootingGame() {
       drawLanterns(ctx, now);
       drawShelves(ctx);
 
+      const wave = WAVES[waveRef.current];
       for (const t of targetsRef.current) {
         if (!t.alive) continue;
-        if (t.kind === "balloon") drawBalloon(ctx, t, now);
-        else drawCan(ctx, t, now);
+        if (t.kind === "balloon") drawBalloon(ctx, t, now, wave.speed, wave.size);
+        else drawCan(ctx, t, now, wave.speed, wave.size);
       }
       const star = starRef.current;
-      if (star.alive) drawStar(ctx, starPos(star, now), star.seed, now);
+      if (star.alive) drawStar(ctx, starPos(star, now), star.seed, now, wave.size);
+      const shiba = shibaRef.current;
+      if (shiba.alive) drawShiba(ctx, shiba, shibaY(now));
 
       drawConfetti(ctx, confettiRef.current);
       drawHoles(ctx, holesRef.current);
@@ -627,7 +929,19 @@ export default function ShootingGame() {
       if (phaseRef.current === "playing" && aimRef.current.visible) {
         const cd = Math.min(1, (now - lastShotRef.current) / COOLDOWN);
         drawReticle(ctx, aimRef.current.x, aimRef.current.y, 0.55 + 0.45 * cd);
+        // 照準の少し上にコンボ紙タグ（コンボ2以上・ヒット直後に少しポップ）
+        if (comboRef.current >= 2) {
+          const pop =
+            1 + 0.35 * Math.max(0, 1 - (now - comboHitAtRef.current) / 0.25);
+          const tx = Math.min(W - 70, Math.max(70, aimRef.current.x));
+          const ty =
+            aimRef.current.y > 70 ? aimRef.current.y - 46 : aimRef.current.y + 52;
+          drawComboTag(ctx, tx, ty, comboRef.current, pop);
+        }
       }
+
+      const banner = waveBannerRef.current;
+      if (banner && now < banner.until) drawWaveBanner(ctx, banner, now);
     };
 
     let raf = 0;
@@ -660,10 +974,12 @@ export default function ShootingGame() {
       <div className="torn max-w-xs border-[3px] border-kraft-paper bg-kraft paper-grain p-6 text-center text-fes-ink shadow-paper">
         <h2 className="font-maru text-2xl font-black text-fes-indigo">🎯 射的</h2>
         <p className="mt-3 font-maru text-sm font-bold">
-          ねらってタップ！ 30秒でどれだけ倒せる？
+          ねらってタップ！ 連続ヒットでコンボ倍率がどんどんUP（最大×2）
         </p>
         <p className="mt-2 font-maru text-xs font-bold text-fes-ink/70">
-          風船10点・缶20点・星30点
+          後半ほど的が小さく速くなって高得点（WAVE2 ×1.5 / WAVE3 ×2）
+          <br />
+          風船10点・缶20点・星30点・金のしば100点！
         </p>
         <button
           type="button"
@@ -681,6 +997,9 @@ export default function ShootingGame() {
         <p className="font-maru text-5xl font-black text-fes-red">
           {score}
           <span className="text-xl">点</span>
+        </p>
+        <p className="mt-1 font-maru text-sm font-bold text-fes-ink/80">
+          最大コンボ {maxCombo}
         </p>
         <p className="mt-2 font-maru text-2xl font-black text-fes-indigo">
           {titleFor(score)}
