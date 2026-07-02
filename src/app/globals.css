@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --night: #072341;
+  --kraft: #eed2ac;
+  --ink: #3a2e2a;
+}
+
+body {
+  color: var(--kraft);
+  background-color: var(--night);
+  /* 夜の祭り会場: 深い藍のグラデーション + まばらな星 + 地平の提灯グロー */
+  background-image:
+    radial-gradient(
+      120% 45% at 50% 108%,
+      rgba(255, 165, 70, 0.22) 0%,
+      rgba(255, 140, 50, 0.1) 40%,
+      rgba(255, 140, 50, 0) 65%
+    ),
+    radial-gradient(1.6px 1.6px at 11% 6%, rgba(255, 244, 214, 0.9), transparent 60%),
+    radial-gradient(1.3px 1.3px at 31% 13%, rgba(255, 244, 214, 0.6), transparent 60%),
+    radial-gradient(1.8px 1.8px at 52% 5%, rgba(255, 244, 214, 0.75), transparent 60%),
+    radial-gradient(1.2px 1.2px at 67% 15%, rgba(255, 244, 214, 0.55), transparent 60%),
+    radial-gradient(1.7px 1.7px at 84% 8%, rgba(255, 244, 214, 0.8), transparent 60%),
+    radial-gradient(1.2px 1.2px at 93% 19%, rgba(255, 244, 214, 0.5), transparent 60%),
+    radial-gradient(1.4px 1.4px at 22% 24%, rgba(255, 244, 214, 0.45), transparent 60%),
+    radial-gradient(1.4px 1.4px at 74% 28%, rgba(255, 244, 214, 0.4), transparent 60%),
+    linear-gradient(180deg, #03122a 0%, #072341 34%, #0c2e52 68%, #143a63 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: cover;
+  min-height: 100dvh;
+  font-family: var(--font-noto-sans), sans-serif;
+}
+
+@layer utilities {
+  /* 切り絵ギザギザ縁（下端） */
+  .edge-zigzag-b {
+    mask:
+      conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg)
+      50% / 18px 100%;
+  }
+  /* 波（スカラップ）縁（下端）。テントの裾向け: 本体帯 + 裾の丸ひだ */
+  .edge-scallop-b {
+    mask-image:
+      linear-gradient(#000, #000),
+      radial-gradient(circle 9px at 50% calc(100% - 9px), #000 97%, #0000);
+    mask-size:
+      100% calc(100% - 9px),
+      18px 100%;
+    mask-position: top, 50% 0;
+    mask-repeat: no-repeat, repeat;
+  }
+  /* 屋台テントのストライプ帯 */
+  .stripe-awning-red {
+    background: repeating-linear-gradient(90deg, #c4372a 0 20px, #fbf0da 20px 40px);
+  }
+  .stripe-awning-blue {
+    background: repeating-linear-gradient(90deg, #2b6cb0 0 20px, #fbf0da 20px 40px);
+  }
+  .stripe-awning-green {
+    background: repeating-linear-gradient(90deg, #1f7e6b 0 20px, #fbf0da 20px 40px);
+  }
+  .stripe-awning-yellow {
+    background: repeating-linear-gradient(90deg, #e8a93b 0 20px, #fbf0da 20px 40px);
+  }
+  /* 紙カードをほんの少し傾けてクラフト感 */
+  .tilt-l {
+    transform: rotate(-1.2deg);
+  }
+  .tilt-r {
+    transform: rotate(1.2deg);
+  }
+  /* ちぎり紙風の不揃い角 */
+  .torn {
+    border-radius: 14px 22px 12px 24px / 22px 12px 24px 14px;
+  }
+  .torn-2 {
+    border-radius: 24px 12px 20px 12px / 12px 24px 12px 20px;
+  }
+  /* クラフト紙の繊維テクスチャ（うっすら） */
+  .paper-grain {
+    background-image:
+      radial-gradient(rgba(120, 84, 40, 0.05) 1px, transparent 1.5px),
+      radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1.5px);
+    background-size: 7px 9px, 11px 7px;
+    background-position: 0 0, 3px 5px;
+  }
+  /* 青海波（せいがいは）模様: 帯の飾り */
+  .seigaiha {
+    background-image:
+      radial-gradient(circle at 50% 120%, transparent 36%, rgba(246, 228, 196, 0.06) 37% 40%, transparent 41%),
+      radial-gradient(circle at 0% 120%, transparent 36%, rgba(246, 228, 196, 0.06) 37% 40%, transparent 41%),
+      radial-gradient(circle at 100% 120%, transparent 36%, rgba(246, 228, 196, 0.06) 37% 40%, transparent 41%);
+    background-size: 48px 24px;
+  }
+}
+
+/* 提灯のゆらぎ */
+@keyframes lantern-sway {
+  0%, 100% { transform: rotate(-2.4deg); }
+  50% { transform: rotate(2.4deg); }
+}
+.lantern-sway {
+  animation: lantern-sway 4.2s ease-in-out infinite;
+  transform-origin: top center;
+}
+.lantern-sway-slow {
+  animation: lantern-sway 5.6s ease-in-out infinite;
+  transform-origin: top center;
+}
+
+/* 花火のきらめき */
+@keyframes firework-twinkle {
+  0%, 100% { opacity: 0.25; transform: scale(0.92); }
+  50% { opacity: 0.85; transform: scale(1.04); }
+}
+.firework-twinkle {
+  animation: firework-twinkle 3.8s ease-in-out infinite;
+}
+.firework-twinkle-d1 { animation-delay: 0.9s; }
+.firework-twinkle-d2 { animation-delay: 1.9s; }
+.firework-twinkle-d3 { animation-delay: 2.7s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lantern-sway, .lantern-sway-slow, .firework-twinkle {
+    animation: none;
+  }
+}
