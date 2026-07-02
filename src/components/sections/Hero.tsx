@@ -19,8 +19,8 @@ export default function Hero() {
         }}
       />
 
-      {/* 中央コンテンツ */}
-      <div className="relative mx-auto flex max-w-3xl flex-col items-center px-4 pb-16 pt-12 text-center sm:pb-20 sm:pt-14">
+      {/* 中央コンテンツ（ヒーローは画面の約9割の高さ・縦センター） */}
+      <div className="relative mx-auto flex min-h-[88svh] max-w-3xl flex-col items-center justify-center px-4 py-14 text-center sm:min-h-[92svh]">
         <img
           src="/art/tagline.png"
           alt="つながる、遊ぶ、つくる。"
@@ -30,7 +30,7 @@ export default function Hero() {
           <img
             src="/art/title-logo.webp"
             alt="Substack 夏祭り"
-            className="w-full max-w-[440px] drop-shadow-[0_10px_24px_rgba(0,0,0,.45)] sm:max-w-[500px]"
+            className="w-full max-w-[480px] drop-shadow-[0_10px_24px_rgba(0,0,0,.45)] sm:max-w-[600px]"
           />
         </h1>
         <p
