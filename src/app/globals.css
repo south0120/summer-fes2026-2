@@ -124,8 +124,36 @@ body {
 .firework-twinkle-d2 { animation-delay: 1.9s; }
 .firework-twinkle-d3 { animation-delay: 2.7s; }
 
+/* ヒーロー入場: ふわっと浮かび上がる（animation-delay で段階化） */
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.hero-rise {
+  animation: hero-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.hero-rise-d1 { animation-delay: 0.18s; }
+.hero-rise-d2 { animation-delay: 0.36s; }
+.hero-rise-d3 { animation-delay: 0.54s; }
+
+/* タイトルロゴのゆっくり浮遊（入場が終わってから始まる） */
+@keyframes hero-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.hero-float {
+  animation: hero-float 6s ease-in-out 1.6s infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .lantern-sway, .lantern-sway-slow, .firework-twinkle {
+  .lantern-sway, .lantern-sway-slow, .firework-twinkle,
+  .hero-rise, .hero-float {
     animation: none;
   }
 }
