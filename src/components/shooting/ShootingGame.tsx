@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import GameShell from "@/components/game/GameShell";
+import Leaderboard from "@/components/game/Leaderboard";
+import ScoreSubmit from "@/components/game/ScoreSubmit";
 import { ensureAudio, sfx } from "@/components/game/audio";
 import { P } from "@/components/game/palette";
 import {
@@ -307,6 +309,94 @@ function drawShelves(ctx: CanvasRenderingContext2D): void {
   }
 }
 
+/**
+ * 手前の射的屋の台（純装飾・当たり判定や入力には一切関与しない）。
+ * カウンター天板 + 紅白幕スカート + 「射的」紙看板 + 予備コルク箱。
+ * 全seed固定の静的描画なのでちらつかない。
+ */
+function drawStallCounter(ctx: CanvasRenderingContext2D): void {
+  const topY = 556; // カウンター天板の上端
+
+  // 紅白幕（カウンター下のスカート）: 紙の下地 + 赤ストライプ（庇と同じ48px割り）
+  paperRect(ctx, -8, topY + 26, W + 16, H - topY, {
+    fill: P.paper,
+    seed: 500,
+    jitter: 2,
+    shadow: "",
+  });
+  for (let i = 0; i < 10; i += 2) {
+    paperRect(ctx, i * 48 - 2, topY + 28, 50, H - topY, {
+      fill: P.red,
+      seed: 502 + i,
+      jitter: 2,
+      shadow: "",
+    });
+  }
+
+  // カウンター天板（wood）+ 前縁（woodDeep）
+  paperRect(ctx, -8, topY, W + 16, 18, {
+    fill: P.wood,
+    seed: 520,
+    jitter: 2.5,
+    shadowDy: 4,
+  });
+  paperRect(ctx, -8, topY + 16, W + 16, 14, {
+    fill: P.woodDeep,
+    seed: 521,
+    jitter: 2,
+    shadow: "",
+  });
+
+  // 「射的」紙看板（左・少し傾けて天板の上に置く）
+  ctx.save();
+  ctx.translate(64, topY - 18);
+  ctx.rotate(-0.06);
+  paperRect(ctx, -34, -26, 68, 52, {
+    fill: P.paper,
+    seed: 530,
+    jitter: 1.8,
+    shadowDy: 4,
+  });
+  paperRect(ctx, -34, -26, 68, 8, {
+    fill: P.red,
+    seed: 531,
+    jitter: 1.2,
+    shadow: "",
+  });
+  ctx.fillStyle = P.indigo;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = '900 22px "Zen Maru Gothic", sans-serif';
+  ctx.fillText("射的", 0, 5);
+  ctx.restore();
+
+  // 予備コルク箱（右・天板の上）: 中のコルク3つ → 箱の前面の順で奥行きを出す
+  const bx = 396;
+  const by = topY;
+  for (let i = 0; i < 3; i++) {
+    paperCircle(ctx, bx - 16 + i * 16, by - 8, 7, {
+      fill: P.kraftLight,
+      seed: 545 + i,
+      jitter: 0.8,
+      edge: P.kraftDeep,
+      edgeWidth: 1.2,
+      shadow: "",
+    });
+  }
+  paperRect(ctx, bx - 30, by - 6, 60, 18, {
+    fill: P.kraft,
+    seed: 540,
+    jitter: 1.6,
+    shadowDy: 3,
+  });
+  paperRect(ctx, bx - 30, by - 6, 60, 5, {
+    fill: P.kraftDeep,
+    seed: 541,
+    jitter: 1,
+    shadow: "",
+  });
+}
+
 function drawBalloon(
   ctx: CanvasRenderingContext2D,
   t: SlotTarget,
@@ -583,17 +673,21 @@ function drawHoles(ctx: CanvasRenderingContext2D, list: Hole[]): void {
   }
 }
 
-/** 照準（紙風の丸 + 十字 + 中心の赤丸）。scaleでしぼむ演出 */
+/** 照準（紙風の丸 + 十字 + 中心の赤丸）。scaleでしぼむ演出。empty=弾切れ警告（赤点滅+「リロード！」紙タグ） */
 function drawReticle(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   scale: number,
+  now: number,
+  empty: boolean,
 ): void {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(scale, scale);
-  ctx.strokeStyle = "rgba(251,240,218,.95)";
+  // 弾切れ中はリング/十字を赤にして点滅（renderのnowを使う・Date.now等は使わない）
+  if (empty) ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(now * 6));
+  ctx.strokeStyle = empty ? P.red : "rgba(251,240,218,.95)";
   ctx.lineWidth = 2.5;
   ctx.beginPath();
   ctx.arc(0, 0, 18, 0, Math.PI * 2);
@@ -609,10 +703,32 @@ function drawReticle(
   ctx.moveTo(0, 10);
   ctx.lineTo(0, 28);
   ctx.stroke();
-  ctx.fillStyle = P.red;
+  ctx.fillStyle = empty ? P.redDeep : P.red;
   ctx.beginPath();
   ctx.arc(0, 0, 3.4, 0, Math.PI * 2);
   ctx.fill();
+  ctx.globalAlpha = 1;
+  if (empty) {
+    // 「リロード！」紙タグ（照準の下・画面下端なら上に退避・左右は画面内にクランプ）
+    ctx.save();
+    ctx.translate(clamp(x, 58, W - 58) - x, y < H - 76 ? 42 : -42);
+    ctx.scale(1 + 0.05 * Math.sin(now * 6), 1 + 0.05 * Math.sin(now * 6));
+    ctx.rotate(-0.04);
+    ctx.font = '900 12px "Zen Maru Gothic", sans-serif';
+    const label = "リロード！";
+    const w = ctx.measureText(label).width + 18;
+    paperRect(ctx, -w / 2, -11, w, 22, {
+      fill: P.paper,
+      seed: 780,
+      jitter: 1.2,
+      shadowDy: 3,
+    });
+    ctx.fillStyle = P.red;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, 0, 1);
+    ctx.restore();
+  }
   ctx.restore();
 }
 
@@ -1135,26 +1251,40 @@ export default function ShootingGame() {
       const shiba = shibaRef.current;
       if (shiba.alive) drawShiba(ctx, shiba, shibaY(now));
 
+      // 手前の射的屋の台（純装飾）。的より下&手前なのでプレイ域は塞がない
+      drawStallCounter(ctx);
+
       drawConfetti(ctx, confettiRef.current);
       drawHoles(ctx, holesRef.current);
 
       if (phaseRef.current === "playing") {
-        // 残弾（左下）+ リロードボタン（右下）
+        // 弾切れ（リロード中は除く）= 照準とボタンで「リロードして」を伝える表示状態
+        const ammoEmpty = ammoRef.current <= 0 && !reloadRef.current.active;
+
+        // 残弾（左上）+ リロードボタン（右上）。弾切れ中に狙っている間もボタンを強調
         drawAmmo(ctx, ammoRef.current);
         drawReloadButton(
           ctx,
           now,
           reloadRef.current,
-          now < emptyFlashUntilRef.current,
+          now < emptyFlashUntilRef.current ||
+            (ammoEmpty && aimRef.current.active),
         );
 
         // 飛翔中のコルク
         if (corkRef.current.active) drawCork(ctx, corkRef.current, now);
 
-        // 照準は押している間だけ表示（手ブレ揺れ込み）
+        // 照準は押している間だけ表示（手ブレ揺れ込み）。弾切れ中は赤点滅+「リロード！」
         if (aimRef.current.active) {
           const pos = aimShaken(now);
-          drawReticle(ctx, pos.x, pos.y, corkRef.current.active ? 0.8 : 1);
+          drawReticle(
+            ctx,
+            pos.x,
+            pos.y,
+            corkRef.current.active ? 0.8 : 1,
+            now,
+            ammoEmpty,
+          );
           // 照準の少し上にコンボ紙タグ（コンボ2以上・ヒット直後に少しポップ）
           if (comboRef.current >= 2) {
             const pop =
@@ -1236,6 +1366,10 @@ export default function ShootingGame() {
         <p className="mt-2 font-maru text-2xl font-black text-fes-indigo">
           {titleFor(score)}
         </p>
+        <div className="mt-4 space-y-3 text-left">
+          <ScoreSubmit game="shooting" score={score} />
+          <Leaderboard game="shooting" />
+        </div>
         <button
           type="button"
           onClick={startGame}

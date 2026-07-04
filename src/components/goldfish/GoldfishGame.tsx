@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import GameShell from "@/components/game/GameShell";
+import Leaderboard from "@/components/game/Leaderboard";
+import ScoreSubmit from "@/components/game/ScoreSubmit";
 import { P } from "@/components/game/palette";
 import {
   paperCircle,
@@ -1130,6 +1132,10 @@ export default function GoldfishGame() {
         <p className="mt-1 font-maru text-xs font-bold text-fes-ink/75">
           ポイのこりボーナス +{ui.poiBonus}
         </p>
+        <div className="mt-4 space-y-3 text-left">
+          <ScoreSubmit game="goldfish" score={ui.score} />
+          <Leaderboard game="goldfish" />
+        </div>
         <button type="button" onClick={start} className={`mt-5 ${BTN_CLASS}`}>
           もう一回
         </button>

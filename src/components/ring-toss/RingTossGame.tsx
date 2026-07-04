@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import GameShell from "@/components/game/GameShell";
+import Leaderboard from "@/components/game/Leaderboard";
+import ScoreSubmit from "@/components/game/ScoreSubmit";
 import { P } from "@/components/game/palette";
 import {
   drawLantern,
@@ -835,6 +837,10 @@ export default function RingTossGame() {
           ステージ{stage} とうたつ！
         </p>
         <p className="mt-3 font-maru text-lg font-black">{rankFor(score)}</p>
+        <div className="mt-4 space-y-3 text-left">
+          <ScoreSubmit game="ring-toss" score={score} />
+          <Leaderboard game="ring-toss" />
+        </div>
         <button
           type="button"
           onClick={start}

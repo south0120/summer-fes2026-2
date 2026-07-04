@@ -1,5 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
-const POSTERS = [
+import { createClient } from "@/lib/supabase/server";
+
+// 投稿がまだ 1 件もないときに掲示板が空にならないよう、デモ用の種ポスターを残す
+const SEED = [
   { img: "/art/poster-1.png", title: "夏の夜の読書会", handle: "@book_and_coffee", likes: 128 },
   { img: "/art/poster-2.png", title: "海辺の音楽祭", handle: "@umi_music", likes: 96 },
   { img: "/art/poster-3.png", title: "怪談ナイト", handle: "@kaidan_library", likes: 77 },
@@ -8,7 +11,41 @@ const POSTERS = [
   { img: "/art/poster-6.png", title: "ZINEマーケット", handle: "@zine_lab", likes: 41 },
 ] as const;
 
-export default function PostersSection() {
+type Poster = {
+  img: string;
+  title: string;
+  handle: string;
+  likes: number;
+};
+
+export default async function PostersSection() {
+  const supabase = createClient();
+
+  let posters: Poster[] = [];
+  try {
+    const { data } = await supabase
+      .from("posters")
+      .select("title, handle, likes, image_path")
+      .order("created_at", { ascending: false })
+      .limit(24);
+
+    if (data && data.length > 0) {
+      posters = data.map((row) => ({
+        img: supabase.storage.from("posters").getPublicUrl(row.image_path).data
+          .publicUrl,
+        title: row.title,
+        handle: row.handle,
+        likes: row.likes,
+      }));
+    }
+  } catch {
+    // Supabase 未設定・接続失敗時はデモポスターにフォールバック
+  }
+
+  if (posters.length === 0) {
+    posters = [...SEED];
+  }
+
   return (
     <section
       id="posters"
@@ -33,9 +70,9 @@ export default function PostersSection() {
 
         {/* ポスターカード（モバイルは横スクロール） */}
         <div className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 lg:grid lg:grid-cols-6 lg:overflow-visible">
-          {POSTERS.map((p, i) => (
+          {posters.map((p, i) => (
             <figure
-              key={p.handle}
+              key={`${p.handle}-${i}`}
               className={`w-36 shrink-0 snap-start rounded-lg border-[3px] border-kraft-paper bg-kraft-paper p-1.5 shadow-paper-sm lg:w-auto ${
                 i % 2 === 0 ? "tilt-l" : "tilt-r"
               }`}

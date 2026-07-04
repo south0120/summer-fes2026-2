@@ -5,6 +5,9 @@ import PostersSection from "@/components/sections/PostersSection";
 import StallsSection from "@/components/sections/StallsSection";
 import Footer from "@/components/sections/Footer";
 
+// 認証状態（Header）と投稿ポスター（PostersSection）を毎リクエスト取得する
+export const dynamic = "force-dynamic";
+
 export default function Home() {
   return (
     <>

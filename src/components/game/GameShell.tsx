@@ -66,8 +66,10 @@ export default function GameShell({
         >
           {children}
           {overlay && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-night-950/70 p-5">
-              {overlay}
+            <div className="absolute inset-0 z-10 overflow-y-auto bg-night-950/70 p-5">
+              <div className="flex min-h-full items-center justify-center">
+                {overlay}
+              </div>
             </div>
           )}
         </div>
