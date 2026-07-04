@@ -46,8 +46,8 @@ export default function Hero() {
         />
       </div>
 
-      {/* 中央コンテンツ（ヒーローは画面の約9割の高さ・縦センター） */}
-      <div className="relative mx-auto flex min-h-[88svh] max-w-3xl flex-col items-center justify-center px-4 py-14 text-center sm:min-h-[92svh]">
+      {/* 中央コンテンツ（ヒーローは画面の約55%の高さ・縦センター） */}
+      <div className="relative mx-auto flex min-h-[54svh] max-w-3xl flex-col items-center justify-center px-4 py-8 text-center sm:min-h-[58svh] sm:py-10">
         <img
           src="/art/tagline.png"
           alt="つながる、遊ぶ、つくる。"
