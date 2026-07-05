@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/client";
 
 /** ミニゲームの識別子（scores.game カラムの値 = 各ゲームのルート名） */
-export type GameKey = "shooting" | "ring-toss" | "goldfish";
+export type GameKey = "shooting" | "shooting-3d" | "ring-toss" | "goldfish";
 
 export const GAME_LABELS: Record<GameKey, string> = {
   shooting: "射的",
+  "shooting-3d": "射的(3D)",
   "ring-toss": "輪投げ",
   goldfish: "金魚すくい",
 };
@@ -125,7 +126,12 @@ const PENDING_KEY = "sf_pending_score";
 export type PendingScore = { game: GameKey; score: number };
 
 function isGameKey(v: unknown): v is GameKey {
-  return v === "shooting" || v === "ring-toss" || v === "goldfish";
+  return (
+    v === "shooting" ||
+    v === "shooting-3d" ||
+    v === "ring-toss" ||
+    v === "goldfish"
+  );
 }
 
 /** ログイン前に出たスコアを localStorage に退避（ログイン復帰後に自動登録する） */

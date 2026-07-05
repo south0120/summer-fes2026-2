@@ -16,6 +16,12 @@ const GAMES = [
     href: "/shooting",
   },
   {
+    title: "射的 3D",
+    desc: "立体の的を本格3Dでねらいうち！",
+    icon: "/art/game-rifle.png",
+    href: "/shooting-3d",
+  },
+  {
     title: "金魚すくい",
     desc: "ポイですくって金魚をゲット！",
     icon: "/art/game-bowl.png",

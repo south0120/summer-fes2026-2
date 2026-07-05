@@ -9,7 +9,7 @@ export const metadata = { title: "ランキング | Substack 夏祭り" };
 // Header の認証状態を毎リクエスト反映する（各ランキングはクライアント側で取得）
 export const dynamic = "force-dynamic";
 
-const GAMES: GameKey[] = ["shooting", "ring-toss", "goldfish"];
+const GAMES: GameKey[] = ["shooting", "shooting-3d", "ring-toss", "goldfish"];
 
 export default function RankingsPage() {
   return (
@@ -27,8 +27,8 @@ export default function RankingsPage() {
               </p>
             </div>
 
-            {/* 3ゲームのランキングを横並び（モバイルは縦積み） */}
-            <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {/* 各ゲームのランキングを横並び（モバイルは縦積み） */}
+            <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {GAMES.map((g) => (
                 <Leaderboard key={g} game={g} />
               ))}
