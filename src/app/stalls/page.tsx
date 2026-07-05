@@ -2,30 +2,34 @@
 import Link from "next/link";
 import Header from "@/components/sections/Header";
 import Footer from "@/components/sections/Footer";
+import LikeButton from "@/components/LikeButton";
 import { createClient } from "@/lib/supabase/server";
+import { getLikeInfo } from "@/lib/likes";
 
 export const metadata = { title: "バーチャル屋台 | Substack 夏祭り" };
 
 // 認証状態（Header）と投稿屋台を毎リクエスト取得する
 export const dynamic = "force-dynamic";
 
-// 投稿がまだ 1 件もないときに通りが空にならないよう、デモ用の種屋台を残す
-const SEED = [
-  { img: "/art/stall-coffee.png", title: "喫茶ストーリーズ", handle: "@coffee_stories", likes: 112, link: "" },
-  { img: "/art/stall-zakka.png", title: "ことば雑貨店", handle: "@kotoba_zakka", likes: 89, link: "" },
-  { img: "/art/stall-crystal.png", title: "星よみ水晶堂", handle: "@hoshi_crystal", likes: 76, link: "" },
-  { img: "/art/stall-game.png", title: "レトロゲーム横丁", handle: "@retro_yokocho", likes: 68, link: "" },
-  { img: "/art/stall-camera.png", title: "写真館ひこうき雲", handle: "@hikoukigumo_photo", likes: 57, link: "" },
-  { img: "/art/stall-art.png", title: "アトリエ金魚", handle: "@atelier_kingyo", likes: 44, link: "" },
-];
-
 type Stall = {
+  id?: string;
   img: string;
   title: string;
   handle: string;
   likes: number;
   link: string;
+  description?: string;
 };
+
+// 投稿がまだ 1 件もないときに通りが空にならないよう、デモ用の種屋台を残す
+const SEED: Stall[] = [
+  { img: "/art/stall-coffee.png", title: "喫茶ストーリーズ", handle: "@coffee_stories", likes: 112, link: "", description: "物語と一杯の珈琲を、あなたに。" },
+  { img: "/art/stall-zakka.png", title: "ことば雑貨店", handle: "@kotoba_zakka", likes: 89, link: "", description: "言葉から生まれた雑貨を並べています。" },
+  { img: "/art/stall-crystal.png", title: "星よみ水晶堂", handle: "@hoshi_crystal", likes: 76, link: "", description: "星と水晶で、今夜の運勢を占います。" },
+  { img: "/art/stall-game.png", title: "レトロゲーム横丁", handle: "@retro_yokocho", likes: 68, link: "", description: "懐かしの名作で遊べる横丁です。" },
+  { img: "/art/stall-camera.png", title: "写真館ひこうき雲", handle: "@hikoukigumo_photo", likes: 57, link: "", description: "夏の一瞬を、写真に閉じ込めて。" },
+  { img: "/art/stall-art.png", title: "アトリエ金魚", handle: "@atelier_kingyo", likes: 44, link: "", description: "金魚モチーフの小さな作品展。" },
+];
 
 export default async function StallsPage() {
   const supabase = createClient();
@@ -34,19 +38,21 @@ export default async function StallsPage() {
   try {
     const { data } = await supabase
       .from("posters")
-      .select("title, handle, likes, image_path, link")
+      .select("id, description, title, handle, likes, image_path, link")
       .eq("kind", "stall")
       .order("created_at", { ascending: false })
       .limit(200);
 
     if (data && data.length > 0) {
       stalls = data.map((row) => ({
+        id: row.id,
         img: supabase.storage.from("posters").getPublicUrl(row.image_path).data
           .publicUrl,
         title: row.title,
         handle: row.handle,
         likes: row.likes,
         link: row.link ?? "",
+        description: row.description ?? undefined,
       }));
     }
   } catch {
@@ -56,6 +62,9 @@ export default async function StallsPage() {
   if (stalls.length === 0) {
     stalls = [...SEED];
   }
+
+  const ids = stalls.filter((s) => s.id).map((s) => s.id!) as string[];
+  const likeInfo = await getLikeInfo(ids);
 
   return (
     <>
@@ -100,10 +109,23 @@ export default async function StallsPage() {
                       <span className="truncate font-maru text-[10px] font-bold text-fes-ink/75">
                         {s.handle}
                       </span>
-                      <span className="ml-1 flex shrink-0 items-center gap-0.5 font-maru text-[10px] font-black text-fes-red">
-                        <span aria-hidden>♥</span> {s.likes}
-                      </span>
+                      {s.id ? (
+                        <LikeButton
+                          postId={s.id}
+                          initialCount={likeInfo[s.id]?.count ?? 0}
+                          initialLiked={likeInfo[s.id]?.likedByMe ?? false}
+                        />
+                      ) : (
+                        <span className="ml-1 flex shrink-0 items-center gap-0.5 font-maru text-[10px] font-black text-fes-red">
+                          <span aria-hidden>♥</span> {s.likes}
+                        </span>
+                      )}
                     </div>
+                    {s.description && (
+                      <p className="mt-1 line-clamp-2 font-maru text-[10px] font-bold leading-4 text-fes-ink/70">
+                        {s.description}
+                      </p>
+                    )}
                     {s.link && (
                       <a
                         href={s.link}
