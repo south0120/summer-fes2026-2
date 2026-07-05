@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Yomogi, Zen_Maru_Gothic, Noto_Sans_JP } from "next/font/google";
 import "./globals.css";
+import GoogleAnalytics from "@/components/GoogleAnalytics";
 
 const yomogi = Yomogi({
   weight: "400",
@@ -44,6 +45,7 @@ export default function RootLayout({
       <body
         className={`${yomogi.variable} ${zenMaru.variable} ${notoSans.variable} font-body antialiased`}
       >
+        <GoogleAnalytics />
         {children}
       </body>
     </html>
