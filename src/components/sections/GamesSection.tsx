@@ -28,12 +28,18 @@ export default function GamesSection() {
     <section id="games" className="relative border-y-4 border-kraft/30 bg-night-900/70 py-10">
       <div className="mx-auto flex max-w-7xl flex-col items-center gap-6 px-4 sm:px-6 lg:flex-row lg:items-stretch">
         {/* セクションラベル */}
-        <div className="torn-2 flex shrink-0 items-center justify-center border-[3px] border-dashed border-kraft/70 bg-night-800/80 px-8 py-5 lg:w-52">
+        <div className="torn-2 flex shrink-0 flex-col items-center justify-center gap-3 border-[3px] border-dashed border-kraft/70 bg-night-800/80 px-8 py-5 lg:w-52">
           <p className="text-center font-maru text-xl font-black leading-9 text-kraft-paper">
             ミニゲームで
             <br />
             遊ぼう！
           </p>
+          <Link
+            href="/rankings"
+            className="rounded-full border-2 border-kraft/60 bg-night-900/60 px-4 py-1.5 font-maru text-xs font-black text-kraft-paper transition-colors hover:text-fes-gold"
+          >
+            🏆 ランキング
+          </Link>
         </div>
 
         {/* ゲームカード

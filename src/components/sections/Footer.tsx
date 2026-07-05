@@ -7,6 +7,7 @@ const LINK_COLUMNS = [
     links: [
       { label: "はじめに", href: "/about" },
       { label: "参加方法", href: "/join" },
+      { label: "ランキング", href: "/rankings" },
       { label: "よくあるご質問", href: "/faq" },
     ],
   },
