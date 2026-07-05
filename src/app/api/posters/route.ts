@@ -46,10 +46,13 @@ export async function POST(request: Request) {
   const handle = String(formData.get("handle") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const link = String(formData.get("link") ?? "").trim();
+  // 投稿区分: poster（ポスター）/ stall（屋台）。未指定・不正値は poster に丸める。
+  const kindRaw = String(formData.get("kind") ?? "poster").trim();
+  const kind = kindRaw === "stall" ? "stall" : "poster";
 
   // バリデーション
   if (!(image instanceof File) || image.size === 0) {
-    return badRequest("ポスター画像を選択してください。");
+    return badRequest("画像を選択してください。");
   }
   if (!image.type.startsWith("image/")) {
     return badRequest("画像ファイル（PNG / JPG など）のみアップロードできます。");
@@ -94,6 +97,7 @@ export async function POST(request: Request) {
 
   const { error: insertError } = await supabase.from("posters").insert({
     user_id: user.id,
+    kind,
     title,
     handle,
     description: description || null,

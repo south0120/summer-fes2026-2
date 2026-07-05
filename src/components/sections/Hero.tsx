@@ -46,8 +46,8 @@ export default function Hero() {
         />
       </div>
 
-      {/* 中央コンテンツ（ヒーローは画面の約55%の高さ・縦センター） */}
-      <div className="relative mx-auto flex min-h-[54svh] max-w-3xl flex-col items-center justify-center px-4 py-8 text-center sm:min-h-[58svh] sm:py-10">
+      {/* 中央コンテンツ（ヒーローは画面の約4割弱・縦センター。参考モックのコンパクトな横帯に寄せる） */}
+      <div className="relative mx-auto flex min-h-[38svh] max-w-3xl flex-col items-center justify-center px-4 py-6 text-center sm:min-h-[42svh] sm:py-7">
         <img
           src="/art/tagline.png"
           alt="つながる、遊ぶ、つくる。"
@@ -57,11 +57,11 @@ export default function Hero() {
           <img
             src="/art/title-logo.webp"
             alt="Substack 夏祭り"
-            className="hero-float mx-auto w-full max-w-[520px] drop-shadow-[0_10px_24px_rgba(0,0,0,.5)] sm:max-w-[720px]"
+            className="hero-float mx-auto w-full max-w-[440px] drop-shadow-[0_10px_24px_rgba(0,0,0,.5)] sm:max-w-[600px]"
           />
         </h1>
         <p
-          className="hero-rise hero-rise-d2 mt-4 max-w-xl font-maru text-sm font-bold leading-7 text-kraft-paper sm:text-base"
+          className="hero-rise hero-rise-d2 mt-3 max-w-xl font-maru text-sm font-bold leading-7 text-kraft-paper sm:text-base"
           style={{ textShadow: "0 2px 8px rgba(3,18,42,.9), 0 0 2px rgba(3,18,42,.9)" }}
         >
           ポスターを投稿したり、屋台を出したり、ミニゲームで遊んだり、
@@ -70,9 +70,9 @@ export default function Hero() {
         </p>
 
         {/* CTA プレート（モバイルは幅いっぱいに広げてタップ領域を確保） */}
-        <div className="hero-rise hero-rise-d3 mt-7 flex w-full max-w-sm flex-col items-stretch gap-4 sm:w-auto sm:max-w-none sm:flex-row">
+        <div className="hero-rise hero-rise-d3 mt-5 flex w-full max-w-sm flex-col items-stretch gap-4 sm:w-auto sm:max-w-none sm:flex-row">
           <a
-            href="#posters"
+            href="/posters/new"
             className="torn group flex items-center gap-3 border-[3px] border-kraft-paper/90 bg-fes-red px-5 py-3.5 text-left shadow-paper transition-transform hover:-translate-y-1"
           >
             <span className="torn-2 flex h-11 w-11 shrink-0 items-center justify-center border-2 border-fes-red-deep bg-kraft-paper text-xl">
@@ -88,7 +88,7 @@ export default function Hero() {
             </span>
           </a>
           <a
-            href="#stalls"
+            href="/stalls/new"
             className="torn-2 group flex items-center gap-3 border-[3px] border-kraft-paper/90 bg-fes-teal px-5 py-3.5 text-left shadow-paper transition-transform hover:-translate-y-1"
           >
             <span className="torn flex h-11 w-11 shrink-0 items-center justify-center border-2 border-fes-teal-deep bg-kraft-paper text-xl">

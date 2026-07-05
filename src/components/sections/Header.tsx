@@ -2,12 +2,12 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 
 const NAV = [
-  { label: "ホーム", href: "#top", active: true },
-  { label: "ポスター", href: "#posters" },
-  { label: "屋台", href: "#stalls" },
-  { label: "ミニゲーム", href: "#games" },
-  { label: "お知らせ", href: "#news" },
-  { label: "ヘルプ", href: "#help" },
+  { label: "ホーム", href: "/", active: true },
+  { label: "ポスター", href: "/posters" },
+  { label: "屋台", href: "/stalls" },
+  { label: "ミニゲーム", href: "/#games" },
+  { label: "お知らせ", href: "/#news" },
+  { label: "ヘルプ", href: "/faq" },
 ];
 
 export default async function Header() {

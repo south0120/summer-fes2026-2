@@ -25,7 +25,32 @@ function validateSubstackLink(link: string): string | null {
   return null;
 }
 
-export default function NewPosterForm() {
+type Kind = "poster" | "stall";
+
+// kind ごとに変わるのは文言と遷移先だけ。フォーム項目は完全に共通
+const COPY = {
+  poster: {
+    imageLabel: "ポスター画像",
+    imageError: "ポスター画像を選択してください。",
+    titlePlaceholder: "例：夏の夜の読書会",
+    descPlaceholder: "ポスターの見どころや込めた想いをどうぞ",
+    submitLabel: "ポスターを貼り出す 🏮",
+    submittingLabel: "貼り出し中…",
+    redirectTo: "/posters",
+  },
+  stall: {
+    imageLabel: "屋台の画像",
+    imageError: "屋台の画像を選択してください。",
+    titlePlaceholder: "例：喫茶ストーリーズ",
+    descPlaceholder: "屋台のおすすめや込めた想いをどうぞ",
+    submitLabel: "屋台を出す 🏮",
+    submittingLabel: "開店準備中…",
+    redirectTo: "/stalls",
+  },
+} as const;
+
+export default function NewPosterForm({ kind = "poster" }: { kind?: Kind }) {
+  const copy = COPY[kind];
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +66,7 @@ export default function NewPosterForm() {
 
     // クライアント側バリデーション
     if (!(image instanceof File) || image.size === 0) {
-      setError("ポスター画像を選択してください。");
+      setError(copy.imageError);
       return;
     }
     if (!image.type.startsWith("image/")) {
@@ -83,8 +108,8 @@ export default function NewPosterForm() {
         setSubmitting(false);
         return;
       }
-      // 成功: 掲示板セクションへ（サーバーで再取得させるためフルナビゲーション）
-      window.location.assign("/#posters");
+      // 成功: 一覧ページへ（サーバーで再取得させるためフルナビゲーション）
+      window.location.assign(copy.redirectTo);
     } catch {
       setError("通信エラーが発生しました。時間をおいてもう一度お試しください。");
       setSubmitting(false);
@@ -93,6 +118,7 @@ export default function NewPosterForm() {
 
   return (
     <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+      <input type="hidden" name="kind" value={kind} />
       {error && (
         <p
           role="alert"
@@ -104,7 +130,7 @@ export default function NewPosterForm() {
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="image" className={labelClass}>
-          ポスター画像 <span className="text-fes-red">＊必須</span>
+          {copy.imageLabel} <span className="text-fes-red">＊必須</span>
         </label>
         <input
           id="image"
@@ -129,7 +155,7 @@ export default function NewPosterForm() {
           type="text"
           required
           maxLength={100}
-          placeholder="例：夏の夜の読書会"
+          placeholder={copy.titlePlaceholder}
           className={inputClass}
         />
       </div>
@@ -158,7 +184,7 @@ export default function NewPosterForm() {
           name="description"
           rows={3}
           maxLength={500}
-          placeholder="ポスターの見どころや込めた想いをどうぞ"
+          placeholder={copy.descPlaceholder}
           className={inputClass}
         />
       </div>
@@ -184,7 +210,7 @@ export default function NewPosterForm() {
         disabled={submitting}
         className="mt-2 rounded-lg border-2 border-fes-red-deep bg-fes-red px-4 py-2.5 font-maru text-sm font-black text-kraft-paper shadow-paper-sm transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
       >
-        {submitting ? "貼り出し中…" : "ポスターを貼り出す 🏮"}
+        {submitting ? copy.submittingLabel : copy.submitLabel}
       </button>
     </form>
   );

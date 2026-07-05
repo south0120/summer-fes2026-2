@@ -1,14 +1,55 @@
 /* eslint-disable @next/next/no-img-element */
-const STALLS = [
-  { name: "喫茶ストーリーズ", handle: "@story_jpn", visitors: 94, icon: "/art/stall-coffee.png", awning: "stripe-awning-red" },
-  { name: "雑貨と文具のお店", handle: "@zakka_note", visitors: 96, icon: "/art/stall-zakka.png", awning: "stripe-awning-blue" },
-  { name: "占いの館と星まつり", handle: "@hoshi_uranai", visitors: 89, icon: "/art/stall-crystal.png", awning: "stripe-awning-green" },
-  { name: "レトロゲーム横丁", handle: "@retro_game_jp", visitors: 73, icon: "/art/stall-game.png", awning: "stripe-awning-yellow" },
-  { name: "写真と旅の屋台", handle: "@tabi_camera", visitors: 67, icon: "/art/stall-camera.png", awning: "stripe-awning-red" },
-  { name: "創作イラスト屋台", handle: "@sousaku_illust", visitors: 59, icon: "/art/stall-art.png", awning: "stripe-awning-blue" },
-] as const;
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 
-export default function StallsSection() {
+// 投稿がまだ 1 件もないときに通りが空にならないよう、デモ用の種屋台を残す
+const SEED = [
+  { img: "/art/stall-coffee.png", title: "喫茶ストーリーズ", handle: "@coffee_stories", likes: 112, link: "" },
+  { img: "/art/stall-zakka.png", title: "ことば雑貨店", handle: "@kotoba_zakka", likes: 89, link: "" },
+  { img: "/art/stall-crystal.png", title: "星よみ水晶堂", handle: "@hoshi_crystal", likes: 76, link: "" },
+  { img: "/art/stall-game.png", title: "レトロゲーム横丁", handle: "@retro_yokocho", likes: 68, link: "" },
+  { img: "/art/stall-camera.png", title: "写真館ひこうき雲", handle: "@hikoukigumo_photo", likes: 57, link: "" },
+  { img: "/art/stall-art.png", title: "アトリエ金魚", handle: "@atelier_kingyo", likes: 44, link: "" },
+];
+
+type Stall = {
+  img: string;
+  title: string;
+  handle: string;
+  likes: number;
+  link: string;
+};
+
+export default async function StallsSection() {
+  const supabase = createClient();
+
+  let stalls: Stall[] = [];
+  try {
+    const { data } = await supabase
+      .from("posters")
+      .select("title, handle, likes, image_path, link")
+      .eq("kind", "stall")
+      .order("created_at", { ascending: false })
+      .limit(6);
+
+    if (data && data.length > 0) {
+      stalls = data.map((row) => ({
+        img: supabase.storage.from("posters").getPublicUrl(row.image_path).data
+          .publicUrl,
+        title: row.title,
+        handle: row.handle,
+        likes: row.likes,
+        link: row.link ?? "",
+      }));
+    }
+  } catch {
+    // Supabase 未設定・接続失敗時はデモ屋台にフォールバック
+  }
+
+  if (stalls.length === 0) {
+    stalls = [...SEED];
+  }
+
   return (
     <section
       id="stalls"
@@ -20,12 +61,20 @@ export default function StallsSection() {
           <h2 className="font-maru text-2xl font-black text-fes-indigo">
             バーチャル屋台
           </h2>
-          <a
-            href="#stalls"
-            className="mt-1 inline-block font-maru text-sm font-black text-fes-red hover:underline"
-          >
-            もっと見る ›
-          </a>
+          <div className="mt-1 flex flex-col items-start gap-0.5">
+            <Link
+              href="/stalls"
+              className="font-maru text-sm font-black text-fes-red hover:underline"
+            >
+              もっと見る ›
+            </Link>
+            <Link
+              href="/stalls/new"
+              className="font-maru text-sm font-black text-fes-red hover:underline"
+            >
+              屋台を出す ›
+            </Link>
+          </div>
           <p className="mt-2 font-maru text-xs font-bold leading-5 text-fes-ink/70">
             クリエイターたちの屋台をのぞいて、作品やコンテンツを楽しもう！
           </p>
@@ -33,36 +82,39 @@ export default function StallsSection() {
 
         {/* 屋台カード（モバイルは横スクロール） */}
         <div className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 lg:grid lg:grid-cols-6 lg:overflow-visible">
-          {STALLS.map((s, i) => (
-            <div
-              key={s.handle}
-              className={`w-44 shrink-0 snap-start overflow-hidden rounded-lg border-[3px] border-kraft-paper bg-kraft-paper shadow-paper-sm lg:w-auto ${
-                i % 2 === 0 ? "tilt-r" : "tilt-l"
+          {stalls.map((s, i) => (
+            <figure
+              key={`${s.handle}-${i}`}
+              className={`w-36 shrink-0 snap-start rounded-lg border-[3px] border-kraft-paper bg-kraft-paper p-1.5 shadow-paper-sm lg:w-auto ${
+                i % 2 === 0 ? "tilt-l" : "tilt-r"
               }`}
             >
-              {/* テントの屋根 */}
-              <div className={`${s.awning} h-5 border-b-2 border-fes-ink/20`} aria-hidden />
-              <div className="relative p-2.5 pb-2">
-                <h3 className="font-maru text-sm font-black leading-5 text-fes-indigo">
-                  {s.name}
-                </h3>
-                <p className="mt-0.5 font-maru text-[10px] font-bold text-fes-ink/65">
-                  {s.handle}
-                </p>
-                <p className="mt-0.5 font-maru text-[10px] font-black text-fes-teal">
-                  <span aria-hidden>👤</span> {s.visitors}人
-                </p>
-                <div className="mt-1 flex items-end justify-between">
-                  <img src={s.icon} alt="" className="h-12 w-14 object-contain" />
-                  <a
-                    href="#stalls"
-                    className="rounded-full border-2 border-fes-red-deep bg-fes-red px-3 py-1 font-maru text-[11px] font-black text-kraft-paper shadow-paper-press transition-transform hover:-translate-y-0.5"
-                  >
-                    のぞく
-                  </a>
+              <img
+                src={s.img}
+                alt={`屋台: ${s.title}`}
+                className="w-full rounded-sm border border-fes-ink/15"
+              />
+              <figcaption className="px-1 pt-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="truncate font-maru text-[10px] font-bold text-fes-ink/75">
+                    {s.handle}
+                  </span>
+                  <span className="ml-1 flex shrink-0 items-center gap-0.5 font-maru text-[10px] font-black text-fes-red">
+                    <span aria-hidden>♥</span> {s.likes}
+                  </span>
                 </div>
-              </div>
-            </div>
+                {s.link && (
+                  <a
+                    href={s.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-block font-maru text-[10px] font-black text-fes-indigo hover:underline"
+                  >
+                    リンクを見る ↗
+                  </a>
+                )}
+              </figcaption>
+            </figure>
           ))}
         </div>
       </div>

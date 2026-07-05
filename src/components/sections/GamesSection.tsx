@@ -36,13 +36,15 @@ export default function GamesSection() {
           </p>
         </div>
 
-        {/* ゲームカード */}
-        <div className="grid w-full gap-5 sm:grid-cols-3">
+        {/* ゲームカード
+            モバイル: 縦積み。PC(sm以上): 横1列。ゲームが少ないうちは伸びて横幅いっぱいに、
+            増えたら折り返さず横スクロール（basis + grow + shrink-0 + overflow-x-auto）。 */}
+        <div className="flex w-full min-w-0 flex-col gap-5 sm:-mx-1 sm:flex-row sm:overflow-x-auto sm:px-1 sm:pb-2">
           {GAMES.map((g, i) => (
             <PaperCard
               key={g.href}
               torn={i % 2 === 0 ? 1 : 2}
-              className={`relative overflow-hidden p-4 pb-5 ${i % 2 === 0 ? "tilt-l" : "tilt-r"}`}
+              className={`relative overflow-hidden p-4 pb-5 sm:shrink-0 sm:grow sm:basis-[280px] sm:snap-start ${i % 2 === 0 ? "tilt-l" : "tilt-r"}`}
             >
               <img
                 src={g.icon}
