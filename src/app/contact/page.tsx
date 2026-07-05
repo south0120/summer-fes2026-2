@@ -6,7 +6,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
   {
     title: "ご連絡の方法",
     body: [
-      "「Substack 夏祭り」に関するご質問・ご要望・不具合のご報告は、Substack の夏祭り運営アカウント宛に、DM またはコメントでご連絡ください。",
+      "「Substack 夏祭り」に関するご質問・ご要望・不具合のご報告は、主催のサウスまで、Substack の DM またはコメントでご連絡ください。",
       "専用のお問い合わせフォームは、ただいま準備中です。できあがるまで、もうしばらくお待ちください。",
     ],
   },
@@ -52,6 +52,20 @@ export default function ContactPage() {
               ))}
             </section>
           ))}
+
+          <section>
+            <h2 className="font-maru text-sm font-black text-fes-indigo">
+              サウスへ連絡する
+            </h2>
+            <a
+              href="https://substack.com/@south0120"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1.5 inline-block rounded-full border-2 border-fes-red-deep bg-fes-red px-5 py-2 font-maru text-sm font-black text-kraft-paper shadow-paper-press transition-transform hover:-translate-y-0.5"
+            >
+              サウスの Substack を開く ↗
+            </a>
+          </section>
 
           <section>
             <p className="font-maru text-xs font-bold leading-5 text-fes-ink/80">

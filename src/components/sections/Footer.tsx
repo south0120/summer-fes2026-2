@@ -66,7 +66,7 @@ export default function Footer() {
         </div>
       </div>
       <p className="mt-10 text-center font-maru text-[11px] font-bold text-kraft/40">
-        © 2026 Substack 夏祭り実行委員会 — 紙とのりでつくったオンライン会場
+        © 2026 Substack 夏祭り実行委員会 — つながる、遊ぶ、つくる。オンラインの夏祭り
       </p>
     </footer>
   );

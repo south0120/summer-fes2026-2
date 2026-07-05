@@ -26,6 +26,15 @@ export default async function NewPosterPage() {
           夏祭りのテーマで作ったポスターを貼り出そう！投稿するとすぐに会場に掲示されます。
         </p>
 
+        <a
+          href="https://chatgpt.com/g/g-6a45b4d042f88191864da8b7f3b05292-substackxia-ji-rigpts"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-flex items-center gap-1 rounded-full border-2 border-fes-indigo/30 bg-kraft-paper px-4 py-2 font-maru text-xs font-black text-fes-indigo hover:-translate-y-0.5"
+        >
+          🎨 AIでポスター画像をつくる（専用GPTs）↗
+        </a>
+
         <NewPosterForm kind="poster" />
 
         <p className="mt-6 text-center">

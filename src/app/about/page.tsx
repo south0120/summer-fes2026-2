@@ -6,7 +6,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
   {
     title: "このお祭りについて",
     body: [
-      "「Substack 夏祭り」は、Substack のクリエイターが集まってつくる、オンラインのお祭り会場です。紙とのりで工作したような、ペーパークラフトの夜祭りの世界に、提灯がゆれて花火があがります。",
+      "「Substack 夏祭り」は、Substack のクリエイターが集まってつくる、オンラインのお祭りです。ポスターを飾ったり、屋台を出したり、ミニゲームで遊んだりしながら、みんなで夏の夜をにぎやかに過ごします。",
       "だれかが用意した完成品のイベントではなく、参加するみんなのポスターや遊んだ記録が少しずつ会場を賑やかにしていく、「みんなでつくるお祭り」です。",
     ],
   },
@@ -36,7 +36,7 @@ export default function AboutPage() {
           はじめに
         </h1>
         <p className="mt-2 font-maru text-xs font-bold leading-5 text-fes-ink/70">
-          ようこそ、「Substack 夏祭り」へ。ここは紙とのりでつくった、オンラインのお祭り会場です。
+          ようこそ、「Substack 夏祭り」へ。ここは Substack のクリエイターが集まる、オンラインのお祭り会場です。
         </p>
 
         <div className="mt-6 space-y-5">
@@ -55,6 +55,23 @@ export default function AboutPage() {
               ))}
             </section>
           ))}
+
+          <section>
+            <h2 className="font-maru text-sm font-black text-fes-indigo">
+              主催者オカンの企画ポスト
+            </h2>
+            <p className="mt-1.5 font-maru text-xs font-bold leading-5 text-fes-ink/80">
+              この夏祭りの成り立ちや思いは、主催者オカンの企画ポストにまとめています。
+            </p>
+            <a
+              href="https://substack.com/home/post/p-204804238"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1.5 inline-block font-maru text-xs font-black text-fes-indigo underline underline-offset-2 hover:text-fes-red"
+            >
+              企画ポストを読む ↗
+            </a>
+          </section>
 
           <section>
             <p className="font-maru text-xs font-bold leading-5 text-fes-ink/80">
