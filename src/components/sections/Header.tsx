@@ -87,10 +87,10 @@ export default async function Header() {
                 </button>
               </form>
               <Link
-                href="/posters/new"
+                href="/mypage"
                 className="rounded-lg border-2 border-fes-red-deep bg-fes-red px-3.5 py-1.5 font-maru text-sm font-bold text-kraft-paper shadow-paper-sm transition-transform hover:-translate-y-0.5"
               >
-                参加する（無料）
+                マイページ
               </Link>
             </>
           ) : (
