@@ -43,6 +43,15 @@ Dashboard → **Authentication → URL Configuration** で:
 
 `<vercel-domain>` は実際の Vercel ドメイン（例: `summer-fes2026.vercel.app`）に読み替えてください。カスタムドメインを使う場合はそちらも追加します。
 
+## 5.5. 【必須】メールテンプレートを token_hash 方式に更新する
+
+デフォルトのメールテンプレート（`{{ .ConfirmationURL }}`）のままだと、**リンクを送信したブラウザと別のブラウザ・端末でリンクを開いたときに「PKCE code verifier not found in storage」エラーでログインに失敗します**（スマホのメールアプリ内ブラウザで頻発）。
+
+1. Dashboard → **Authentication → Emails → Templates** を開く
+2. **Magic Link** と **Confirm signup** の 2 テンプレートを、`supabase/email-templates-ja.md` の内容（リンクが `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email` になっているもの）に差し替える
+
+これでどのブラウザ・端末でリンクを開いてもログインできるようになります。
+
 ## 6. 【公開前に必須】メール送信を Resend SMTP に切り替える
 
 Supabase 内蔵のメール送信は**レート制限が厳しく**（1 時間あたり数通程度）、一般公開すると確認メールがすぐ届かなくなります。公開前に:

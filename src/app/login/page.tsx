@@ -35,9 +35,9 @@ function LoginForm() {
     setSending(true);
     setError(null);
     const supabase = createClient();
-    const emailRedirectTo = nextPath
-      ? `${location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
-      : `${location.origin}/auth/callback`;
+    // 常に ?next= を付けておく（メールテンプレートが {{ .RedirectTo }} の後ろに
+    // &token_hash=... を連結する前提のため、クエリ文字列を必ず開始しておく）
+    const emailRedirectTo = `${location.origin}/auth/callback?next=${encodeURIComponent(nextPath ?? "/")}`;
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: trimmed,
       options: {
