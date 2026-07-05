@@ -8,7 +8,9 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/posters/new";
+  // 既定の遷移先はトップ（ログイン状態で会場へ）。ポスター/屋台の投稿導線からログインした
+  // 場合のみ ?next=/posters/new 等が付与され、その画面に戻る。
+  const next = searchParams.get("next") ?? "/";
 
   if (!code) {
     return NextResponse.redirect(
@@ -25,5 +27,31 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.redirect(`${origin}${next.startsWith("/") ? next : "/posters/new"}`);
+  // 初回ログイン時に profiles 行を作成する（表示名の正本）。
+  // ユーザーネームは登録フォームで user_metadata.username に載せてある。
+  // 既に行があれば触らない（＝マイページで変えた名前を上書きしない）。
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!existing) {
+        const metaName = user.user_metadata?.username;
+        const username =
+          (typeof metaName === "string" && metaName.trim() !== ""
+            ? metaName.trim()
+            : user.email?.split("@")[0] || "ゲスト").slice(0, 20);
+        await supabase.from("profiles").insert({ user_id: user.id, username });
+      }
+    }
+  } catch {
+    // profiles 未整備でもログイン自体は成立させる（表示側はフォールバックあり）
+  }
+
+  return NextResponse.redirect(`${origin}${next.startsWith("/") ? next : "/"}`);
 }

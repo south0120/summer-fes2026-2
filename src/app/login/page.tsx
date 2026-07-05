@@ -12,6 +12,7 @@ function LoginForm() {
   const rawNext = searchParams.get("next");
   const nextPath = rawNext && rawNext.startsWith("/") ? rawNext : null;
 
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -19,6 +20,13 @@ function LoginForm() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // ユーザーネームは任意。初めての方が入れると表示名になり、2回目以降は空欄でOK
+    // （既存ユーザーの表示名は magic-link 仕様上ここでは上書きされない）。
+    const trimmedUsername = username.trim();
+    if (trimmedUsername.length > 20) {
+      setError("ユーザーネームは20文字以内で入力してください。");
+      return;
+    }
     const trimmed = email.trim();
     if (!trimmed) {
       setError("メールアドレスを入力してください。");
@@ -27,12 +35,15 @@ function LoginForm() {
     setSending(true);
     setError(null);
     const supabase = createClient();
+    const emailRedirectTo = nextPath
+      ? `${location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
+      : `${location.origin}/auth/callback`;
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: trimmed,
       options: {
-        emailRedirectTo: nextPath
-          ? `${location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
-          : `${location.origin}/auth/callback`,
+        // 入力があるときだけ user_metadata に載せる（新規ユーザー作成時に表示名として使う）
+        ...(trimmedUsername ? { data: { username: trimmedUsername } } : {}),
+        emailRedirectTo,
       },
     });
     setSending(false);
@@ -47,11 +58,11 @@ function LoginForm() {
     <div className="torn paper-grain w-full max-w-md border-[3px] border-kraft-paper/90 bg-kraft p-7 text-fes-ink shadow-paper-lg sm:p-9">
       <p className="font-maru text-sm font-bold text-fes-red">🏮 受付はこちら</p>
       <h1 className="mt-1 font-maru text-2xl font-black text-fes-indigo">
-        夏祭りにログイン
+        参加する／ログイン
       </h1>
       <p className="mt-2 font-maru text-xs font-bold leading-5 text-fes-ink/70">
-        メールアドレスを入力すると、ログイン用のリンクをお送りします。
-        パスワードは不要です。
+        メールアドレスにログイン用のリンクをお送りします。パスワードは不要です。
+        初めての方はユーザーネーム（表示名）も決めてください。
       </p>
 
       {sent ? (
@@ -74,6 +85,26 @@ function LoginForm() {
               {error ?? `ログインできませんでした：${urlError}`}
             </p>
           )}
+          <label
+            htmlFor="username"
+            className="font-maru text-sm font-black text-fes-indigo"
+          >
+            ユーザーネーム（表示名）
+            <span className="ml-1 font-bold text-fes-ink/50">— 初めての方のみ</span>
+          </label>
+          <input
+            id="username"
+            type="text"
+            maxLength={20}
+            autoComplete="nickname"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="なつまつり太郎"
+            className="rounded-lg border-2 border-fes-ink/25 bg-kraft-paper px-3.5 py-2.5 font-maru text-sm font-bold text-fes-ink placeholder:text-fes-ink/40 focus:border-fes-indigo focus:outline-none"
+          />
+          <p className="-mt-1 font-maru text-[11px] font-bold text-fes-ink/60">
+            ランキングなどに表示される名前です（20文字まで）。2回目以降のログインは空欄でOK・変更はマイページから。
+          </p>
           <label
             htmlFor="email"
             className="font-maru text-sm font-black text-fes-indigo"

@@ -20,7 +20,10 @@ export type ScoreSubmittedDetail = {
   source: "pending" | "manual";
 };
 
-/** 指定ゲームの上位スコアを取得（score降順 → 同点は先着順） */
+/** 指定ゲームの上位スコアを取得（score降順 → 同点は先着順）。
+ * 表示名は scores.name（登録時のスナップショット）ではなく、
+ * user_id から引いた「現在の」profiles.username を優先する。
+ * これでユーザーネームを変更すると過去スコアの表示名も自動で追随する。 */
 export async function fetchTopScores(
   game: GameKey,
   limit = 10,
@@ -28,14 +31,38 @@ export async function fetchTopScores(
   const supabase = createClient();
   const { data, error } = await supabase
     .from("scores")
-    .select("name, score")
+    .select("name, score, user_id")
     .eq("game", game)
     .order("score", { ascending: false })
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row: { name: string; score: number }) => ({
-    name: String(row.name ?? ""),
+  const rows = (data ?? []) as {
+    name: string | null;
+    score: number | null;
+    user_id: string | null;
+  }[];
+
+  // user_id → 現在のユーザーネームを一括取得（profiles 未整備でもフォールバックで安全）
+  const userIds = Array.from(
+    new Set(rows.map((r) => r.user_id).filter(Boolean)),
+  ) as string[];
+  const nameByUser: Record<string, string> = {};
+  if (userIds.length > 0) {
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("user_id, username")
+      .in("user_id", userIds);
+    for (const p of (profs ?? []) as { user_id: string; username: string | null }[]) {
+      if (p?.user_id && typeof p.username === "string" && p.username.trim() !== "") {
+        nameByUser[p.user_id] = p.username.trim();
+      }
+    }
+  }
+
+  return rows.map((row) => ({
+    name:
+      (row.user_id && nameByUser[row.user_id]) || String(row.name ?? ""),
     score: Number(row.score ?? 0),
   }));
 }
@@ -62,7 +89,7 @@ export async function submitScore(
 
 /**
  * なまえ欄の初期値。
- * ログインユーザーの最新ポスターの handle → 無ければメールのローカル部 → 空文字。
+ * 表示名の正本 = profiles.username → 無ければ最新ポスターの handle → メールのローカル部 → 空文字。
  */
 export async function getSuggestedName(): Promise<string> {
   const supabase = createClient();
@@ -70,6 +97,16 @@ export async function getSuggestedName(): Promise<string> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return "";
+
+  // 正本のユーザーネーム（profiles 未整備時はフォールバックに落ちる）
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("username")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const uname = prof?.username;
+  if (typeof uname === "string" && uname.trim() !== "") return uname.trim();
+
   const { data } = await supabase
     .from("posters")
     .select("handle")

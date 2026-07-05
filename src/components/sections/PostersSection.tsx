@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 
 // 投稿がまだ 1 件もないときに掲示板が空にならないよう、デモ用の種ポスターを残す
@@ -58,12 +59,12 @@ export default async function PostersSection() {
           <h2 className="font-maru text-2xl font-black text-fes-indigo">
             みんなのポスター
           </h2>
-          <a
-            href="#posters"
+          <Link
+            href="/posters"
             className="mt-1 inline-block font-maru text-sm font-black text-fes-red hover:underline"
           >
             もっと見る ›
-          </a>
+          </Link>
           <p className="mt-2 font-maru text-xs font-bold leading-5 text-fes-ink/70">
             夏祭りのテーマで投稿されたポスターをチェックしよう！
           </p>

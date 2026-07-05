@@ -16,6 +16,24 @@ export default async function Header() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // 表示名の正本は profiles.username。テーブル未作成/行なしでも落ちないように
+  // フォールバック（メールのローカル部）を用意する。
+  let displayName = user?.email?.split("@")[0] ?? "";
+  if (user) {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (typeof profile?.username === "string" && profile.username.trim() !== "") {
+        displayName = profile.username;
+      }
+    } catch {
+      // profiles 未整備でもヘッダーは表示する
+    }
+  }
+
   return (
     <header className="sticky top-0 z-40 border-b-2 border-kraft/25 bg-night-950/90 backdrop-blur-sm">
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6">
@@ -53,12 +71,13 @@ export default async function Header() {
         <div className="ml-auto flex shrink-0 items-center gap-2.5 lg:ml-0">
           {user ? (
             <>
-              <span
-                className="hidden max-w-[9rem] truncate font-maru text-xs font-bold text-kraft/85 sm:block"
-                title={user.email ?? undefined}
+              <Link
+                href="/mypage"
+                className="hidden max-w-[9rem] truncate font-maru text-xs font-bold text-kraft/85 transition-colors hover:text-fes-gold sm:block"
+                title={displayName}
               >
-                {user.email}
-              </span>
+                {displayName}
+              </Link>
               <form action="/auth/signout" method="post" className="hidden sm:block">
                 <button
                   type="submit"
