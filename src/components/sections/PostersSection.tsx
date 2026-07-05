@@ -68,12 +68,20 @@ export default async function PostersSection() {
           <h2 className="font-maru text-2xl font-black text-fes-indigo">
             みんなのポスター
           </h2>
-          <Link
-            href="/posters"
-            className="mt-1 inline-block font-maru text-sm font-black text-fes-red hover:underline"
-          >
-            もっと見る ›
-          </Link>
+          <div className="mt-1 flex flex-col items-start gap-0.5">
+            <Link
+              href="/posters"
+              className="font-maru text-sm font-black text-fes-red hover:underline"
+            >
+              もっと見る ›
+            </Link>
+            <Link
+              href="/posters/new"
+              className="font-maru text-sm font-black text-fes-red hover:underline"
+            >
+              ポスターを投稿する ›
+            </Link>
+          </div>
           <p className="mt-2 font-maru text-xs font-bold leading-5 text-fes-ink/70">
             夏祭りのテーマで投稿されたポスターをチェックしよう！
           </p>
