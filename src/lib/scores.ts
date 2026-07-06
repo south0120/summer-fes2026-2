@@ -1,13 +1,23 @@
 import { createClient } from "@/lib/supabase/client";
 
 /** ミニゲームの識別子（scores.game カラムの値 = 各ゲームのルート名） */
-export type GameKey = "shooting" | "shooting-3d" | "ring-toss" | "goldfish";
+export type GameKey =
+  | "shooting"
+  | "shooting-3d"
+  | "ring-toss"
+  | "goldfish"
+  | "yoyo"
+  | "cotton-candy"
+  | "whack";
 
 export const GAME_LABELS: Record<GameKey, string> = {
   shooting: "射的",
   "shooting-3d": "射的(3D)",
   "ring-toss": "輪投げ",
   goldfish: "金魚すくい",
+  yoyo: "ヨーヨーすくい",
+  "cotton-candy": "綿あめ",
+  whack: "たぬき叩き",
 };
 
 export type ScoreRow = { name: string; score: number };
@@ -130,7 +140,10 @@ function isGameKey(v: unknown): v is GameKey {
     v === "shooting" ||
     v === "shooting-3d" ||
     v === "ring-toss" ||
-    v === "goldfish"
+    v === "goldfish" ||
+    v === "yoyo" ||
+    v === "cotton-candy" ||
+    v === "whack"
   );
 }
 

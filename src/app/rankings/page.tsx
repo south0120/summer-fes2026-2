@@ -9,7 +9,15 @@ export const metadata = { title: "ランキング | Substack 夏祭り" };
 // Header の認証状態を毎リクエスト反映する（各ランキングはクライアント側で取得）
 export const dynamic = "force-dynamic";
 
-const GAMES: GameKey[] = ["shooting", "shooting-3d", "ring-toss", "goldfish"];
+const GAMES: GameKey[] = [
+  "shooting",
+  "shooting-3d",
+  "ring-toss",
+  "goldfish",
+  "yoyo",
+  "cotton-candy",
+  "whack",
+];
 
 export default function RankingsPage() {
   return (
