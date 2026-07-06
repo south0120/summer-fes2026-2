@@ -58,9 +58,11 @@ export default function GamesSection() {
             <br />
             遊ぼう！
           </p>
+          {/* ランキングは PC ではラベル内に。スマホでは「先に空のランキングが目立つ」のを避けるため
+              カードの下（下記 lg:hidden リンク）に回す。 */}
           <Link
             href="/rankings"
-            className="rounded-full border-2 border-kraft/60 bg-night-900/60 px-4 py-1.5 font-maru text-xs font-black text-kraft-paper transition-colors hover:text-fes-gold"
+            className="hidden rounded-full border-2 border-kraft/60 bg-night-900/60 px-4 py-1.5 font-maru text-xs font-black text-kraft-paper transition-colors hover:text-fes-gold lg:inline-block"
           >
             🏆 ランキング
           </Link>
@@ -99,6 +101,14 @@ export default function GamesSection() {
             </PaperCard>
           ))}
         </div>
+
+        {/* スマホ専用: ランキング導線はゲームの「下」に置く（先に目立たせない） */}
+        <Link
+          href="/rankings"
+          className="self-center rounded-full border-2 border-kraft/60 bg-night-900/60 px-6 py-2 font-maru text-xs font-black text-kraft-paper transition-colors hover:text-fes-gold lg:hidden"
+        >
+          🏆 ランキングを見る
+        </Link>
       </div>
     </section>
   );
