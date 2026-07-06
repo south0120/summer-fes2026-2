@@ -56,8 +56,7 @@ export default async function AdminDashboard() {
   }[];
   const profileCount = profilesRes.count ?? 0;
 
-  const posterCount = posters.filter((p) => p.kind !== "stall").length;
-  const stallCount = posters.filter((p) => p.kind === "stall").length;
+  const postCount = posters.length;
   const likeTotal = likes.length;
 
   // いいね人気TOP
@@ -126,9 +125,8 @@ export default async function AdminDashboard() {
         </a>
 
         {/* 集計 */}
-        <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="ポスター投稿" value={posterCount} />
-          <Stat label="屋台投稿" value={stallCount} />
+        <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Stat label="投稿" value={postCount} />
           <Stat label="いいね総数" value={likeTotal} />
           <Stat label="参加者（ユニーク）" value={participantIds.size} sub={`登録ユーザー ${profileCount}`} />
         </section>
@@ -187,9 +185,6 @@ export default async function AdminDashboard() {
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-fes-indigo/10 px-2 py-0.5 font-maru text-[10px] font-black text-fes-indigo">
-                      {p.kind === "stall" ? "屋台" : "ポスター"}
-                    </span>
                     <span className="truncate font-maru text-sm font-black text-fes-ink">
                       {p.title ?? "（無題）"}
                     </span>

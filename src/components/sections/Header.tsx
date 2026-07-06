@@ -3,8 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const NAV = [
   { label: "ホーム", href: "/", active: true },
-  { label: "ポスター", href: "/posters" },
-  { label: "屋台", href: "/stalls" },
+  { label: "屋台・ポスター", href: "/posters" },
   { label: "ミニゲーム", href: "/#games" },
   { label: "お知らせ", href: "/#news" },
   { label: "ヘルプ", href: "/faq" },

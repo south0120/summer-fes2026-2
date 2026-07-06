@@ -64,13 +64,13 @@ export default function Hero() {
           className="hero-rise hero-rise-d2 mt-3 max-w-xl font-maru text-sm font-bold leading-7 text-kraft-paper sm:text-base"
           style={{ textShadow: "0 2px 8px rgba(3,18,42,.9), 0 0 2px rgba(3,18,42,.9)" }}
         >
-          ポスターを投稿したり、屋台を出したり、ミニゲームで遊んだり、
+          作品やイベントを投稿したり、ミニゲームで遊んだり、
           <br className="hidden sm:block" />
           みんなで楽しむ、オンラインの夏祭りへようこそ！
         </p>
 
         {/* CTA プレート（モバイルは幅いっぱいに広げてタップ領域を確保） */}
-        <div className="hero-rise hero-rise-d3 mt-5 flex w-full max-w-sm flex-col items-stretch gap-4 sm:w-auto sm:max-w-none sm:flex-row">
+        <div className="hero-rise hero-rise-d3 mt-5 flex w-full max-w-sm flex-col items-stretch gap-4 sm:w-auto sm:max-w-none sm:flex-row sm:justify-center">
           <a
             href="/posters/new"
             className="torn group flex items-center gap-3 border-[3px] border-kraft-paper/90 bg-fes-red px-5 py-3.5 text-left shadow-paper transition-transform hover:-translate-y-1"
@@ -80,26 +80,10 @@ export default function Hero() {
             </span>
             <span>
               <span className="block font-maru text-lg font-black text-kraft-paper">
-                ポスターを投稿
+                投稿する
               </span>
               <span className="block font-maru text-xs font-bold text-kraft-light/90">
                 あなたのイベントや作品を紹介！
-              </span>
-            </span>
-          </a>
-          <a
-            href="/stalls/new"
-            className="torn-2 group flex items-center gap-3 border-[3px] border-kraft-paper/90 bg-fes-teal px-5 py-3.5 text-left shadow-paper transition-transform hover:-translate-y-1"
-          >
-            <span className="torn flex h-11 w-11 shrink-0 items-center justify-center border-2 border-fes-teal-deep bg-kraft-paper text-xl">
-              ⛩️
-            </span>
-            <span>
-              <span className="block font-maru text-lg font-black text-kraft-paper">
-                屋台を出す
-              </span>
-              <span className="block font-maru text-xs font-bold text-kraft-light/90">
-                オリジナルの屋台を開こう！
               </span>
             </span>
           </a>

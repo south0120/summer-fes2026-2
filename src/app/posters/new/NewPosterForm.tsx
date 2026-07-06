@@ -30,11 +30,11 @@ type Kind = "poster" | "stall";
 // kind ごとに変わるのは文言と遷移先だけ。フォーム項目は完全に共通
 const COPY = {
   poster: {
-    imageLabel: "ポスター画像",
-    imageError: "ポスター画像を選択してください。",
+    imageLabel: "投稿画像",
+    imageError: "投稿画像を選択してください。",
     titlePlaceholder: "例：夏の夜の読書会",
-    descPlaceholder: "ポスターの見どころや込めた想いをどうぞ",
-    submitLabel: "ポスターを貼り出す 🏮",
+    descPlaceholder: "投稿の見どころや込めた想いをどうぞ",
+    submitLabel: "投稿を貼り出す 🏮",
     submittingLabel: "貼り出し中…",
     redirectTo: "/posters",
   },
@@ -45,7 +45,7 @@ const COPY = {
     descPlaceholder: "屋台のおすすめや込めた想いをどうぞ",
     submitLabel: "屋台を出す 🏮",
     submittingLabel: "開店準備中…",
-    redirectTo: "/stalls",
+    redirectTo: "/posters",
   },
 } as const;
 
