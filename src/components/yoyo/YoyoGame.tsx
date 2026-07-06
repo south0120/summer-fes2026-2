@@ -37,6 +37,13 @@ const GOLD_LIFETIME = 7; // 金ヨーヨーの滞在秒数
 const RACK = { x: W - 66, y: 40 };
 const COMBO_STEP = 0.25; // コンボ1につき倍率 +0.25
 const COMBO_MULT_MAX = 3;
+// 引き上げ速度の制約（本物のヨーヨー釣り同様、急に引くと輪ゴムがフックから外れる）。
+// フック（指）の移動速度がこれを超えると、掴んだヨーヨーがフックから外れて落ちる。
+// 単位は論理px/秒。ゆっくりした一定ペースの引き上げ（数百px/s）は通り、素早いスワイプ（数千px/s）で外れる。
+const SLIP_SPEED = 640;
+const JERK_WEAR_START = 300; // これ以上速く動かすと「ジャーク」としてこよりに余分な負荷がかかる
+const JERK_WEAR_K = 0.0016; // ジャーク時の追加濡れ係数（速さ×時間に比例）
+const HOOK_SPD_ATTACK = 18; // フック速度の平滑化アタック（大きいほど即応）
 
 type Phase = "ready" | "playing" | "result";
 type YoyoKind = "red" | "green" | "blue" | "gold";
@@ -113,6 +120,8 @@ type Sim = {
   wear: number; // 濡れ係数（掴むたび増・新品で0）
   brokenT: number; // >0 の間はこより再装着中で掴めない
   heldId: number; // 掴んでいるヨーヨーid（0 = なし）
+  hookSpd: number; // フック（指）の移動速度の平滑値（px/s）。速すぎるとフックから外れる
+  ptrPrev: { x: number; y: number }; // 前フレームのポインタ位置（速度算出用）
   caught: YoyoKind[]; // とった内訳
   rack: YoyoKind[]; // ラックに並ぶヨーヨー
   yoyos: Yoyo[];
@@ -191,6 +200,8 @@ function makeSim(): Sim {
     wear: 0,
     brokenT: 0,
     heldId: 0,
+    hookSpd: 0,
+    ptrPrev: { x: W / 2, y: H / 2 },
     caught: [],
     rack: [],
     yoyos,
@@ -252,6 +263,17 @@ function breakKoyori(s: Sim, yo: Yoyo): void {
   s.brokenT = REATTACH_T; // 新しいこよりを付けるまで操作不可
 }
 
+/** 速く引きすぎて、掴んだヨーヨーがフックから外れた（＝すっぽ抜け） */
+function slipOff(s: Sim, yo: Yoyo): void {
+  sfx.miss();
+  spawnScraps(s, yo.x, yo.y - 6);
+  addPop(s, yo.x, yo.y - 44, "すっぽ抜け！");
+  dropBack(yo);
+  s.heldId = 0;
+  s.combo = 0;
+  s.wear += WEAR_PER_GRAB; // 雑に扱うとこよりが弱る
+}
+
 /** pointerdown: 近くのヨーヨーを掴む */
 function grab(s: Sim): void {
   if (s.phase !== "playing" || s.brokenT > 0 || s.heldId !== 0) return;
@@ -271,6 +293,10 @@ function grab(s: Sim): void {
   best.stateT = 0;
   best.leaving = false;
   s.heldId = best.id;
+  // 掴んだ瞬間の速度スパイクで即すっぽ抜けしないよう、フック速度と基準位置をリセット
+  s.hookSpd = 0;
+  s.ptrPrev.x = s.ptr.x;
+  s.ptrPrev.y = s.ptr.y;
   s.wear += WEAR_PER_GRAB; // 使うほどこよりが濡れて弱る
   sfx.tap();
   s.rings.push({
@@ -358,12 +384,30 @@ function update(s: Sim, dt: number): void {
       }
     }
 
+    // フック（指）の移動速度を毎フレーム平滑化して算出。速すぎるとヨーヨーが外れる。
+    const instSpd =
+      dt > 0
+        ? Math.hypot(s.ptr.x - s.ptrPrev.x, s.ptr.y - s.ptrPrev.y) / dt
+        : 0;
+    s.hookSpd += (instSpd - s.hookSpd) * Math.min(1, dt * HOOK_SPD_ATTACK);
+    s.ptrPrev.x = s.ptr.x;
+    s.ptrPrev.y = s.ptr.y;
+
     // こより耐久: 保持中は消耗（重い・濡れているほど速い）／未使用時はゆっくり回復
     const held = s.heldId !== 0 ? s.yoyos.find((y) => y.id === s.heldId) : undefined;
     if (held) {
-      const drain = DRAIN_BASE * YOYO_DEF[held.kind].weight * (1 + s.wear);
-      s.koyori -= drain * dt;
-      if (s.koyori <= 0) breakKoyori(s, held);
+      if (s.hookSpd > SLIP_SPEED) {
+        // 速く引きすぎ → 輪ゴムがフックから外れて落下（＝すっぽ抜け）
+        slipOff(s, held);
+      } else {
+        // 急な動き（ジャーク）はこよりに余分な負荷をかけて弱らせる
+        if (s.hookSpd > JERK_WEAR_START) {
+          s.wear += (s.hookSpd - JERK_WEAR_START) * JERK_WEAR_K * dt;
+        }
+        const drain = DRAIN_BASE * YOYO_DEF[held.kind].weight * (1 + s.wear);
+        s.koyori -= drain * dt;
+        if (s.koyori <= 0) breakKoyori(s, held);
+      }
     } else if (s.brokenT <= 0 && s.koyori < KOYORI_MAX) {
       s.koyori = clamp(s.koyori + IDLE_REGEN * dt, 0, KOYORI_MAX);
     }
@@ -1085,14 +1129,14 @@ export default function YoyoGame() {
           🪀 ヨーヨーすくい
         </h2>
         <p className="mt-3 font-maru text-sm font-bold">
-          おさえて掴んで、点線より上ではなす！
+          掴んだら<span className="text-fes-red">ゆっくり</span>引き上げて、点線より上ではなす！
         </p>
         <p className="mt-1.5 font-maru text-xs font-bold">30秒スコアアタック</p>
         <ul className="mt-2 space-y-0.5 text-left font-maru text-xs font-bold text-fes-ink/80">
-          <li>・掴んでいる間、こよりが濡れて弱っていく</li>
-          <li>・切れると付けかえるまで時間ロス</li>
+          <li>・急に引くと輪ゴムがフックから外れて“すっぽ抜け”</li>
+          <li>・掴んでいる間こよりが濡れて弱る／切れると時間ロス</li>
           <li>・連続で取るとコンボ倍率アップ（最大×3）</li>
-          <li>・⭐ 金ヨーヨーは60点。重いので消耗に注意！</li>
+          <li>・⭐ 金ヨーヨーは60点。重いので慎重に！</li>
         </ul>
         <button type="button" onClick={start} className={`mt-5 ${BTN_CLASS}`}>
           はじめる
@@ -1134,7 +1178,7 @@ export default function YoyoGame() {
   return (
     <GameShell
       title="ヨ ー ヨ ー す く い"
-      tagline="こよりが切れる前に釣り上げてね"
+      tagline="あわてず、ゆっくり引き上げて釣り上げてね"
       scoreboard={scoreboard}
       overlay={overlay}
     >
