@@ -190,7 +190,10 @@ function GameStage({
     };
   }, [world, showOkan]);
 
-  /* ----- 入力（ポインタ統一: PC=エイム+クリック / スマホ=タップ即射撃） ----- */
+  /* ----- 入力（2D 版踏襲: 押して照準 → 動かして狙う → 離して発射） ----- */
+
+  // ドラッグ照準の状態。発射は pointerup（離した瞬間）に確定する
+  const aimRef = useRef({ active: false, pointerId: -1 });
 
   const localPos = (e: React.PointerEvent) => {
     const rect = wrapRef.current!.getBoundingClientRect();
@@ -204,6 +207,8 @@ function GameStage({
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!wrapRef.current) return;
+    // 照準中は主ポインタのみ追従（2 本目の指は無視）。未照準時は PC ホバー追従を許可
+    if (aimRef.current.active && aimRef.current.pointerId !== e.pointerId) return;
     const { x, y } = localPos(e);
     // 照準は指より上に出す（タップ位置と狙点をずらす＝指で的が隠れない）
     crossRef.current?.move(x, Math.max(0, y - AIM_OFFSET_PX));
@@ -211,15 +216,33 @@ function GameStage({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!wrapRef.current) return;
-    const { x, y, w, h } = localPos(e);
-    // 狙点はタップ位置より上（クロスヘア表示と raycast を同じ座標に揃える）
-    const aimY = Math.max(0, y - AIM_OFFSET_PX);
-    crossRef.current?.move(x, aimY);
     // ユーザー操作起点で AudioContext を用意（自動再生制約対策）
     resumeAudio();
+    if (aimRef.current.active) return; // 2 本目の指は無視
+    const { x, y } = localPos(e);
+    const aimY = Math.max(0, y - AIM_OFFSET_PX);
+    // 照準を表示するだけ（まだ発射しない。離した瞬間に発射する）
+    crossRef.current?.move(x, aimY);
+    aimRef.current = { active: true, pointerId: e.pointerId };
+    try {
+      wrapRef.current.setPointerCapture(e.pointerId);
+    } catch {
+      /* 一部環境で capture 不可でも動作継続 */
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!wrapRef.current) return;
+    const aim = aimRef.current;
+    if (!aim.active || aim.pointerId !== e.pointerId) return;
+    aim.active = false;
+    const { x, y, w, h } = localPos(e);
+    // 離した瞬間の狙点（指より上）で確定＝クロスヘア表示と raycast を同座標に揃える
+    const aimY = Math.max(0, y - AIM_OFFSET_PX);
+    crossRef.current?.move(x, aimY);
     // リロード中は撃てない
     if (world.reloading) return;
-    // 弾切れ時のタップはリロード開始
+    // 弾切れ時は発射せずリロード開始
     if (world.ammo <= 0) {
       if (world.started && !world.ended) startReload();
       return;
@@ -231,12 +254,20 @@ function GameStage({
     setAmmo(world.ammo);
   };
 
+  const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    // 中断: 発射せず照準状態だけ解除（発射は pointerup のみ）
+    const aim = aimRef.current;
+    if (aim.active && aim.pointerId === e.pointerId) aim.active = false;
+  };
+
   return (
     <div
       ref={wrapRef}
       className="absolute inset-0 cursor-crosshair touch-none select-none"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
       aria-label="3D射的ゲームのステージ"
     >
       <Scene world={world} active={!ended} />
@@ -288,7 +319,7 @@ export default function ShootingGame3D() {
   return (
     <GameShell
       title="３Ｄ射的"
-      tagline="タップで立体の的をねらいうち！"
+      tagline="ねらって、はなして発射！"
       scoreboard={
         <>
           <span>スコア: {score}</span>
@@ -308,7 +339,7 @@ export default function ShootingGame3D() {
             <p className="mt-3 font-maru text-sm font-bold leading-relaxed">
               本格3Dの射的台！
               <br />
-              立体の的をタップでねらいうち！
+              ゆびでねらって、はなすと発射！
               <br />
               制限時間は30秒。
             </p>
