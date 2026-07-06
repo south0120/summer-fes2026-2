@@ -27,8 +27,24 @@ const GAMES = [
     icon: "/art/game-bowl.png",
     href: "/goldfish",
   },
-  // NOTE: ヨーヨーすくい / わたあめ / たぬき叩き はトップ非公開でソフトデプロイ中（サウス指示 2026-07-06）。
-  //       ルート(/yoyo, /cotton-candy, /whack)と /rankings 枠は生きている。公開時にここへカードを戻す。
+  {
+    title: "ヨーヨーすくい",
+    desc: "こよりが切れる前にすくえ！金ヨーヨーで高得点！",
+    icon: "/art/game-yoyo.png",
+    href: "/yoyo",
+  },
+  {
+    title: "わたあめ",
+    desc: "ぐるぐる巻いてふわふわに育てよう！",
+    icon: "/art/game-cotton-candy.png",
+    href: "/cotton-candy",
+  },
+  {
+    title: "たぬき叩き",
+    desc: "たぬきをぽこぽこ！お邪魔キャラに気をつけて！",
+    icon: "/art/game-whack.png",
+    href: "/whack",
+  },
 ] as const;
 
 export default function GamesSection() {
