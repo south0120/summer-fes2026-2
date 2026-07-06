@@ -50,6 +50,18 @@ function tierOf(mass: number): number {
   return t;
 }
 
+// 注文ジャスト＆コンボ
+const JUST_MULT = 1.5; // 注文サイズぴったりの倍率
+const COMBO_STEP = 0.2; // 連続ジャスト1回ごとの倍率上乗せ
+const COMBO_MULT_MAX = 3;
+function comboMult(combo: number): number {
+  return Math.min(COMBO_MULT_MAX, 1 + COMBO_STEP * combo);
+}
+// 注文の出現率（序盤は ふつう/大玉 中心 → 以降ミニ/特大も混ざる）
+const ORDER_W_EARLY = [0, 0.55, 0.45, 0] as const;
+const ORDER_W = [0.16, 0.34, 0.32, 0.18] as const;
+const GAUGE_MAX = 1.9; // 目標ゲージの上端 mass
+
 type Pop = {
   x: number;
   y: number;
@@ -85,10 +97,15 @@ type Sim = {
   score: number;
   sticks: number; // 完成した本数
   done: number[]; // 完成した各本の tier
+  order: number; // 現在の注文 tier（0..3）
+  ordHist: number[]; // 直近の注文履歴（同サイズ3連続を防ぐ）
+  combo: number; // 連続ジャスト数
+  justs: number; // ジャスト回数（リザルト用）
+  heatWarned: boolean; // 「こげそう！」を一度だけ出す
   // いま育てている1本
   mass: number; // 巻いた綿量
   fluff: number; // ふわふわ度 0..1
-  heat: number; // 回しすぎメーター 0..1（1で固まる）
+  heat: number; // こげメーター 0..1（1で焦げて1本パー）
   momentum: number; // 同方向に回し続けた勢い 0..1
   wind: number; // 綿の見た目の回転角
   lastTier: number;
@@ -115,6 +132,10 @@ type Ui = {
   sec: number;
   sticks: number;
   tier: number; // 現在の綿の tier（-1 = まだ完成できない）
+  order: number; // 現在の注文 tier
+  combo: number; // 連続ジャスト数
+  mult: number; // 現在のコンボ倍率
+  justs: number; // ジャスト回数
   counts: [number, number, number, number];
 };
 
@@ -125,13 +146,18 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 function makeSim(): Sim {
-  return {
+  const s: Sim = {
     phase: "ready",
     t: 0,
     time: GAME_TIME,
     score: 0,
     sticks: 0,
     done: [],
+    order: 1,
+    ordHist: [],
+    combo: 0,
+    justs: 0,
+    heatWarned: false,
     mass: 0,
     fluff: 1,
     heat: 0,
@@ -145,6 +171,28 @@ function makeSim(): Sim {
     pops: [],
     scraps: [],
   };
+  nextOrder(s);
+  return s;
+}
+
+/** 次の注文を決める（同じサイズが3連続しないように） */
+function nextOrder(s: Sim): void {
+  const w: readonly number[] = s.sticks < 2 ? ORDER_W_EARLY : ORDER_W;
+  let t = 1;
+  for (let tries = 0; tries < 8; tries++) {
+    let r = Math.random();
+    t = 0;
+    for (let i = 0; i < w.length; i++) {
+      t = i;
+      if (r < w[i]) break;
+      r -= w[i];
+    }
+    const n = s.ordHist.length;
+    if (!(n >= 2 && s.ordHist[n - 1] === t && s.ordHist[n - 2] === t)) break;
+  }
+  s.ordHist.push(t);
+  if (s.ordHist.length > 4) s.ordHist.shift();
+  s.order = t;
 }
 
 function candyRadius(mass: number): number {
@@ -193,27 +241,44 @@ function spawnMote(s: Sim): void {
   });
 }
 
-/** 1本完成（スコア確定→新しい割り箸へ）。tier未満なら何もしない */
+/** 1本完成（注文と照合してスコア確定→新しい割り箸へ）。tier未満なら何もしない */
 function commitCandy(s: Sim): void {
   const tier = tierOf(s.mass);
   if (tier < 0) return;
-  const pts = Math.round(
-    (s.mass * 100 + TIERS[tier].bonus) * (0.55 + 0.45 * s.fluff),
-  );
+  const base = (s.mass * 100 + TIERS[tier].bonus) * (0.55 + 0.45 * s.fluff);
+  const popY = s.candy.y - candyRadius(s.mass) - 26;
+  let pts: number;
+  if (tier === s.order) {
+    // ジャスト: 倍率×コンボで大きく報いる
+    s.combo++;
+    s.justs++;
+    pts = Math.round(base * JUST_MULT * comboMult(s.combo));
+    addPop(
+      s,
+      s.candy.x,
+      popY,
+      s.combo >= 2 ? `ジャスト！${s.combo}コンボ +${pts}` : `ジャスト！+${pts}`,
+    );
+    spawnConfetti(s, s.candy.x, s.candy.y);
+    sfx.bigHit();
+  } else {
+    // サイズ外し: 基本点のみ・コンボリセット
+    s.combo = 0;
+    pts = Math.round(base);
+    addPop(s, s.candy.x, popY, `サイズちがい… +${pts}`);
+    sfx.hit();
+  }
   s.score += pts;
   s.sticks++;
   s.done.push(tier);
-  addPop(s, s.candy.x, s.candy.y - candyRadius(s.mass) - 26, `${TIERS[tier].name}かんせい！+${pts}`);
-  spawnConfetti(s, s.candy.x, s.candy.y);
-  if (tier >= 2) sfx.bigHit();
-  else sfx.hit();
-  // 新しい割り箸
+  // 新しい割り箸 & 次の注文
   s.mass = 0;
   s.fluff = 1;
   s.heat = Math.max(0, s.heat - 0.4);
   s.lastTier = -1;
   s.momentum *= 0.6;
   s.spin.turnAcc = 0;
+  nextOrder(s);
 }
 
 function endGame(s: Sim): void {
@@ -290,9 +355,9 @@ function update(s: Sim, dt: number): void {
       else s.momentum = Math.max(0, s.momentum - dt * 0.6);
 
       // 回しすぎ・巻きすぎで熱がたまる
-      if (rev > 2.4) s.heat += (rev - 2.4) * 0.34 * dt;
+      if (rev > 2.4) s.heat += (rev - 2.4) * 0.3 * dt;
       const over = s.mass > MAX_MASS_SOFT;
-      if (over && rev > 0.5) s.heat += dt * 0.25;
+      if (over && rev > 0.5) s.heat += dt * 0.3;
 
       // 綿の積算: 同方向の角度変化ぶんだけ育つ（1周 = 2π で1単位）
       if (inBand && sgn !== 0 && sgn === s.spin.dir) {
@@ -321,15 +386,40 @@ function update(s: Sim, dt: number): void {
     s.momentum = Math.max(0, s.momentum - dt * 0.4);
   }
 
-  // 熱の冷却 & 固まり判定
+  // 熱の冷却 & 焦げ判定（heat=1 でその1本パー）
   const revNow = Math.abs(s.spin.vel) / (Math.PI * 2);
-  if (revNow < 2.3) s.heat = Math.max(0, s.heat - dt * 0.2);
+  if (revNow < 2.3) s.heat = Math.max(0, s.heat - dt * 0.28);
+  if (s.heat < 0.5) s.heatWarned = false;
+  if (s.phase === "playing" && s.heat > 0.75 && !s.heatWarned) {
+    s.heatWarned = true;
+    sfx.tick();
+    addPop(s, s.candy.x, s.candy.y - candyRadius(s.mass) - 26, "こげそう！");
+  }
   if (s.heat >= 1 && s.phase === "playing") {
-    s.heat = 0.35;
-    s.fluff = Math.max(0.3, s.fluff - 0.28);
-    s.mass = Math.max(0, s.mass - 0.08);
+    s.heat = 0.45;
+    s.mass = 0;
+    s.fluff = 1;
+    s.combo = 0;
+    s.lastTier = -1;
+    s.momentum = 0;
+    s.spin.turnAcc = 0;
     sfx.pop();
-    addPop(s, s.candy.x, s.candy.y - candyRadius(s.mass) - 26, "回しすぎ！固まった…");
+    addPop(s, s.candy.x, s.candy.y - 40, "焦げた！1本パー…");
+    // 黒こげの紙くず
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 50 + Math.random() * 90;
+      s.scraps.push({
+        x: s.candy.x,
+        y: s.candy.y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 40,
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 8,
+        life: 0.5 + Math.random() * 0.3,
+        color: i % 3 === 0 ? "#6B4A3A" : "#4A3A32",
+      });
+    }
   }
 
   // サイズ段階アップの通知
@@ -612,7 +702,140 @@ function drawMeters(ctx: CanvasRenderingContext2D, s: Sim): void {
     }
   };
   drawBar(18, "ふわふわ", s.fluff, COTTON.pinkDeep, false);
-  drawBar(42, "まきすぎ", s.heat, P.red, s.heat > 0.72);
+  drawBar(42, "こげ", s.heat, P.red, s.heat > 0.65);
+}
+
+/** 画面上部: お客さんと注文の吹き出し */
+function drawOrder(ctx: CanvasRenderingContext2D, s: Sim): void {
+  if (s.phase === "result") return;
+  const t = s.order;
+  const inZone = s.phase === "playing" && tierOf(s.mass) === t;
+  const cx = 62;
+  const cy = 124;
+  const bodyColors = [P.red, P.indigo, P.gold, COTTON.pinkDeep];
+  // 体 → 頭
+  paperRect(ctx, cx - 15, cy + 14, 30, 24, {
+    fill: bodyColors[s.sticks % bodyColors.length],
+    jitter: 1.6,
+    seed: 41 + s.sticks,
+    shadow: "rgba(0,0,0,.3)",
+    shadowDy: 2,
+  });
+  paperCircle(ctx, cx, cy, 19, {
+    fill: P.kraftLight,
+    edge: P.woodDeep,
+    edgeWidth: 1.5,
+    jitter: 1.8,
+    seed: 42,
+    shadow: "rgba(0,0,0,.3)",
+    shadowDy: 2,
+  });
+  ctx.fillStyle = "#3A2E2A";
+  ctx.beginPath();
+  ctx.arc(cx - 6, cy - 2, 2.1, 0, Math.PI * 2);
+  ctx.arc(cx + 6, cy - 2, 2.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#3A2E2A";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(cx, cy + 4, 5, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
+
+  // 吹き出し「◯◯ ちょうだい！」
+  const text = `${TIERS[t].name} ちょうだい！`;
+  ctx.font = `900 16px ${FONT_MARU}`;
+  const tw = ctx.measureText(text).width;
+  const bx = cx + 42;
+  const by = cy - 28;
+  const bw = tw + 26;
+  paperRect(ctx, bx, by, bw, 36, {
+    fill: P.kraftLight,
+    edge: inZone ? P.gold : P.redDeep,
+    edgeWidth: inZone ? 3 : 2,
+    jitter: 2,
+    seed: 43 + t,
+    shadow: "rgba(0,0,0,.35)",
+    shadowDy: 3,
+  });
+  // しっぽ
+  ctx.fillStyle = P.kraftLight;
+  ctx.beginPath();
+  ctx.moveTo(bx + 2, by + 14);
+  ctx.lineTo(bx - 10, by + 27);
+  ctx.lineTo(bx + 2, by + 27);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = P.redDeep;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, bx + bw / 2, by + 19);
+}
+
+/** 左の目標ゲージ: 注文のジャストゾーンと現在の綿量 */
+function drawGauge(ctx: CanvasRenderingContext2D, s: Sim): void {
+  if (s.phase !== "playing") return;
+  const gx = 20;
+  const gw = 15;
+  const gy = 212;
+  const gh = 298;
+  const yOf = (m: number) =>
+    gy + gh - (clamp(m, 0, GAUGE_MAX) / GAUGE_MAX) * gh;
+  paperRect(ctx, gx, gy, gw, gh, {
+    fill: "rgba(251,240,218,.16)",
+    jitter: 2,
+    seed: 61,
+    shadow: "rgba(0,0,0,.3)",
+    shadowDy: 2,
+  });
+  // ジャストゾーン（注文tierのmass帯。特大は上限まで）
+  const zLo = TIERS[s.order].mass;
+  const zHi = s.order < TIERS.length - 1 ? TIERS[s.order + 1].mass : GAUGE_MAX;
+  const inZone = tierOf(s.mass) === s.order;
+  const zy = yOf(zHi);
+  ctx.globalAlpha = inZone ? 0.55 + 0.3 * Math.sin(s.t * 9) : 0.38;
+  ctx.fillStyle = P.gold;
+  ctx.fillRect(gx + 2, zy, gw - 4, yOf(zLo) - zy);
+  ctx.globalAlpha = 1;
+  // 現在の綿量
+  const my = yOf(s.mass);
+  ctx.fillStyle = COTTON.pinkDeep;
+  ctx.fillRect(gx + 4, my, gw - 8, gy + gh - my);
+  // tier 目盛り
+  ctx.strokeStyle = "rgba(251,240,218,.6)";
+  ctx.lineWidth = 1.5;
+  for (const tier of TIERS) {
+    const ty = yOf(tier.mass);
+    ctx.beginPath();
+    ctx.moveTo(gx, ty);
+    ctx.lineTo(gx + gw, ty);
+    ctx.stroke();
+  }
+  // 現在位置マーカー（右向き矢じり）
+  ctx.fillStyle = COTTON.white;
+  ctx.beginPath();
+  ctx.moveTo(gx + gw + 3, my);
+  ctx.lineTo(gx + gw + 12, my - 6);
+  ctx.lineTo(gx + gw + 12, my + 6);
+  ctx.closePath();
+  ctx.fill();
+  // ラベル
+  ctx.font = `900 11px ${FONT_MARU}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "rgba(251,240,218,.85)";
+  ctx.fillText("めあて", gx + gw / 2 + 5, gy - 13);
+  // ジャストゾーン内: 「いま出せ！」の合図
+  if (inZone) {
+    ctx.globalAlpha = 0.65 + 0.35 * Math.sin(s.t * 8);
+    ctx.font = `900 20px ${FONT_MARU}`;
+    ctx.strokeStyle = "rgba(42,34,30,.8)";
+    ctx.lineWidth = 4;
+    ctx.lineJoin = "round";
+    ctx.strokeText("いま出せ！", W / 2, 560);
+    ctx.fillStyle = P.gold;
+    ctx.fillText("いま出せ！", W / 2, 560);
+    ctx.globalAlpha = 1;
+  }
 }
 
 /** 開始直後のぐるぐるガイド */
@@ -703,6 +926,8 @@ function render(ctx: CanvasRenderingContext2D, s: Sim): void {
   drawCandy(ctx, s);
   drawGuide(ctx, s);
   drawMeters(ctx, s);
+  drawOrder(ctx, s);
+  drawGauge(ctx, s);
   drawScraps(ctx, s);
   drawPops(ctx, s);
 }
@@ -710,9 +935,9 @@ function render(ctx: CanvasRenderingContext2D, s: Sim): void {
 /* ================= コンポーネント ================= */
 
 function rankTitle(score: number): string {
-  if (score >= 600) return "わたあめ名人！";
-  if (score >= 350) return "いい感じ！";
-  if (score >= 120) return "もうちょい！";
+  if (score >= 800) return "わたあめ名人！";
+  if (score >= 450) return "いい感じ！";
+  if (score >= 150) return "もうちょい！";
   return "また挑戦してね";
 }
 
@@ -731,6 +956,10 @@ export default function CottonCandyGame() {
     sec: GAME_TIME,
     sticks: 0,
     tier: -1,
+    order: 1,
+    combo: 0,
+    mult: 1,
+    justs: 0,
     counts: [0, 0, 0, 0],
   });
 
@@ -745,9 +974,13 @@ export default function CottonCandyGame() {
       sec: Math.max(0, Math.ceil(s.time)),
       sticks: s.sticks,
       tier: tierOf(s.mass),
+      order: s.order,
+      combo: s.combo,
+      mult: comboMult(s.combo),
+      justs: s.justs,
       counts,
     };
-    const key = `${next.phase}|${next.score}|${next.sec}|${next.sticks}|${next.tier}|${counts.join(",")}`;
+    const key = `${next.phase}|${next.score}|${next.sec}|${next.sticks}|${next.tier}|${next.order}|${next.combo}|${next.justs}|${counts.join(",")}`;
     if (key !== uiKeyRef.current) {
       uiKeyRef.current = key;
       setUi(next);
@@ -856,7 +1089,10 @@ export default function CottonCandyGame() {
   const scoreboard = (
     <div className="flex items-center justify-between font-maru text-sm font-black">
       <span>⏱ のこり {ui.sec}</span>
-      <span>かんせい {ui.sticks}本</span>
+      <span>
+        🔥コンボ {ui.combo}
+        <span className="ml-1 text-xs">×{ui.mult.toFixed(1)}</span>
+      </span>
       <span>スコア {ui.score}</span>
     </div>
   );
@@ -868,14 +1104,15 @@ export default function CottonCandyGame() {
           🍭 わたあめづくり
         </h2>
         <p className="mt-3 font-maru text-sm font-bold">
-          釜の上で ぐるぐる円をかくと綿がふくらむ！
+          お客さんの注文サイズにピッタリ育てて出そう！
         </p>
         <p className="mt-1.5 font-maru text-xs font-bold">30秒スコアアタック</p>
         <ul className="mt-2 space-y-0.5 text-left font-maru text-xs font-bold text-fes-ink/80">
-          <li>・同じ向きにリズムよく回すと効率アップ</li>
-          <li>・回しすぎると固まってふわふわダウン</li>
-          <li>・育ったら「かんせい！」でスコア確定→次の1本</li>
-          <li>・大玉・特大ほどボーナス大</li>
+          <li>・釜の上で ぐるぐる円をかくと綿がふくらむ</li>
+          <li>・注文どおりのサイズで出すと「ジャスト！」で高得点</li>
+          <li>・連続ジャストでコンボ倍率UP（サイズちがいでリセット）</li>
+          <li>・回しすぎ・巻きすぎは焦げて1本パー！こげメーター注意</li>
+          <li>・左のゲージが金色に光ったら出しどき</li>
         </ul>
         <button type="button" onClick={start} className={`mt-5 ${BTN_CLASS}`}>
           はじめる
@@ -892,7 +1129,7 @@ export default function CottonCandyGame() {
           {rankTitle(ui.score)}
         </h2>
         <p className="mt-2 font-maru text-sm font-bold">
-          🍭 {ui.sticks}本かんせい
+          🍭 {ui.sticks}本かんせい（ジャスト{ui.justs}回）
         </p>
         <p className="mt-1 font-maru text-xs font-bold text-fes-ink/75">
           ミニ×{ui.counts[0]}　ふつう×{ui.counts[1]}　大玉×{ui.counts[2]}　特大×
@@ -917,7 +1154,7 @@ export default function CottonCandyGame() {
   return (
     <GameShell
       title="わ た あ め"
-      tagline="ぐるぐる回してふわふわに育てよう"
+      tagline="注文サイズにピッタリ！ジャストでコンボをつなげ"
       scoreboard={scoreboard}
       overlay={overlay}
     >
@@ -930,7 +1167,9 @@ export default function CottonCandyGame() {
         <button
           type="button"
           onClick={commitNow}
-          className="absolute bottom-3 left-1/2 z-[5] -translate-x-1/2 whitespace-nowrap rounded-full border-2 border-fes-red-deep bg-fes-red px-6 py-2 font-maru text-sm font-black text-kraft-paper shadow-paper-sm transition-transform active:translate-y-0.5"
+          className={`absolute bottom-3 left-1/2 z-[5] -translate-x-1/2 whitespace-nowrap rounded-full border-2 border-fes-red-deep bg-fes-red px-6 py-2 font-maru text-sm font-black text-kraft-paper shadow-paper-sm transition-transform active:translate-y-0.5 ${
+            ui.tier === ui.order ? "animate-pulse" : ""
+          }`}
         >
           🍭 {TIERS[ui.tier].name}でかんせい！
         </button>
