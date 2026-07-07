@@ -45,7 +45,18 @@ const GAMES = [
     icon: "/art/game-whack.png",
     href: "/whack",
   },
-  // ベビーカステラ(/castella): 試遊のためソフトデプロイ中。トップには当面出さず直URL/rankings枠のみ。
+  {
+    title: "ベビーカステラ",
+    desc: "きつね色になったら返す！焦げる前にタップ！",
+    icon: "/art/game-castella.png",
+    href: "/castella",
+  },
+  {
+    title: "ベーコンエッグたい焼き",
+    desc: "卵をど真ん中に！きつね色で取り出そう！",
+    icon: "/art/game-taiyaki.png",
+    href: "/taiyaki",
+  },
 ] as const;
 
 export default function GamesSection() {
