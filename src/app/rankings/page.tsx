@@ -17,6 +17,7 @@ const GAMES: GameKey[] = [
   "yoyo",
   "cotton-candy",
   "whack",
+  "castella",
 ];
 
 export default function RankingsPage() {

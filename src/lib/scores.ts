@@ -8,7 +8,8 @@ export type GameKey =
   | "goldfish"
   | "yoyo"
   | "cotton-candy"
-  | "whack";
+  | "whack"
+  | "castella";
 
 export const GAME_LABELS: Record<GameKey, string> = {
   shooting: "射的",
@@ -18,6 +19,7 @@ export const GAME_LABELS: Record<GameKey, string> = {
   yoyo: "ヨーヨーすくい",
   "cotton-candy": "綿あめ",
   whack: "たぬき叩き",
+  castella: "ベビーカステラ",
 };
 
 export type ScoreRow = { name: string; score: number };
@@ -143,7 +145,8 @@ function isGameKey(v: unknown): v is GameKey {
     v === "goldfish" ||
     v === "yoyo" ||
     v === "cotton-candy" ||
-    v === "whack"
+    v === "whack" ||
+    v === "castella"
   );
 }
 

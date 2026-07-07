@@ -45,6 +45,7 @@ const GAMES = [
     icon: "/art/game-whack.png",
     href: "/whack",
   },
+  // ベビーカステラ(/castella): 試遊のためソフトデプロイ中。トップには当面出さず直URL/rankings枠のみ。
 ] as const;
 
 export default function GamesSection() {
