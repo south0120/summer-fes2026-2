@@ -13,8 +13,8 @@ export default function Home() {
       <Header />
       <main>
         <Hero />
-        <GamesSection />
         <PostersSection />
+        <GamesSection />
       </main>
       <Footer />
     </>
