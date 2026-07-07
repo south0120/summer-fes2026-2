@@ -28,10 +28,10 @@ const GOLD_HI = 0.9;
 // ど真ん中ボーナス帯
 const PIN_LO = 0.76;
 const PIN_HI = 0.84;
-const PIN_BONUS = 30;
-const BASE_PTS = 100;
-const COMBO_STEP = 0.2;
-const COMBO_MAX_MULT = 3;
+const PIN_BONUS = 15;
+const BASE_PTS = 50;
+const COMBO_STEP = 0.15;
+const COMBO_MAX_MULT = 2.5;
 
 // 焼き上がり速度: doneness/秒。終盤は 1 + DIFF_MAX_BONUS 倍まで加速
 const BASE_COOK = 1 / 6.5;
@@ -572,9 +572,9 @@ function render(ctx: CanvasRenderingContext2D, s: Sim): void {
 /* ================= コンポーネント ================= */
 
 function rankTitle(score: number): string {
-  if (score >= 3000) return "カステラ職人！";
-  if (score >= 1500) return "いい焼き加減！";
-  if (score >= 500) return "もうちょい！";
+  if (score >= 1200) return "カステラ職人！";
+  if (score >= 600) return "いい焼き加減！";
+  if (score >= 200) return "もうちょい！";
   return "また挑戦してね";
 }
 
