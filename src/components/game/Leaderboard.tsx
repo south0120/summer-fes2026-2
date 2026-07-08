@@ -13,7 +13,7 @@ import {
 const MEDALS = ["🥇", "🥈", "🥉"] as const;
 
 /**
- * ゲーム別ランキング TOP10。
+ * ゲーム別ランキング TOP4（5位以降は非表示）。
  * mount 時に取得し、ScoreSubmit の登録完了イベント（同じゲーム分）で再取得する。
  */
 export default function Leaderboard({ game }: { game: GameKey }) {
@@ -23,7 +23,7 @@ export default function Leaderboard({ game }: { game: GameKey }) {
   const load = useCallback(async () => {
     try {
       setError(null);
-      setRows(await fetchTopScores(game, 10));
+      setRows(await fetchTopScores(game, 4));
     } catch {
       setError("ランキングを取得できませんでした。");
     }
