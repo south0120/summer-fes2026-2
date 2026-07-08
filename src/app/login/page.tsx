@@ -17,23 +17,26 @@ function LoginForm() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function sendOtp() {
     // ユーザーネームは任意。初めての方が入れると表示名になり、2回目以降は空欄でOK
     // （既存ユーザーの表示名は magic-link 仕様上ここでは上書きされない）。
     const trimmedUsername = username.trim();
     if (trimmedUsername.length > 20) {
       setError("ユーザーネームは20文字以内で入力してください。");
-      return;
+      return false;
     }
     const trimmed = email.trim();
     if (!trimmed) {
       setError("メールアドレスを入力してください。");
-      return;
+      return false;
     }
     setSending(true);
     setError(null);
+    setVerifyError(null);
     const supabase = createClient();
     // 常に ?next= を付けておく（メールテンプレートが {{ .RedirectTo }} の後ろに
     // &token_hash=... を連結する前提のため、クエリ文字列を必ず開始しておく）
@@ -49,9 +52,85 @@ function LoginForm() {
     setSending(false);
     if (otpError) {
       setError(`メールを送信できませんでした：${otpError.message}`);
+      return false;
+    }
+    return true;
+  }
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const ok = await sendOtp();
+    if (!ok) {
       return;
     }
     setSent(true);
+  }
+
+  async function handleResend() {
+    if (sending) {
+      return;
+    }
+    await sendOtp();
+  }
+
+  async function ensureProfile() {
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        return;
+      }
+
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (existing) {
+        return;
+      }
+
+      const typed = username.trim();
+      const metaName = user.user_metadata?.username;
+      const name = (
+        typed ||
+        (typeof metaName === "string" && metaName.trim()
+          ? metaName.trim()
+          : user.email?.split("@")[0] || "ゲスト")
+      ).slice(0, 20);
+      await supabase.from("profiles").insert({ user_id: user.id, username: name });
+    } catch {
+      // プロフィール作成に失敗してもログイン自体は完了させる。
+    }
+  }
+
+  async function handleCodeSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const trimmedEmail = email.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setVerifyError("6桁のコードを入力してください。");
+      return;
+    }
+    setVerifying(true);
+    setVerifyError(null);
+    const supabase = createClient();
+    const { error: otpError } = await supabase.auth.verifyOtp({
+      email: trimmedEmail,
+      token: code,
+      type: "email",
+    });
+    setVerifying(false);
+    if (otpError) {
+      setVerifyError(
+        "コードが正しくないか、期限切れです。もう一度お試しください（再送もできます）。",
+      );
+      return;
+    }
+
+    await ensureProfile();
+    window.location.assign(nextPath ?? "/");
   }
 
   return (
@@ -71,9 +150,54 @@ function LoginForm() {
             確認メールを送りました 🎐
           </p>
           <p className="mt-1.5 font-maru text-xs font-bold leading-5 text-fes-ink/70">
-            {email.trim()} 宛のメールにあるリンクを開くと、ログインが完了します。
+            {email.trim()} 宛のメールにある6桁コードを入力すると、アプリ内でログインできます。
+            パソコンなど同じブラウザで使う場合はリンクをタップでもOKです。
             届かない場合は迷惑メールフォルダも確認してください。
           </p>
+          {(error ?? verifyError) && (
+            <p
+              role="alert"
+              className="mt-3 rounded-lg border-2 border-fes-red/40 bg-kraft-paper px-3 py-2 font-maru text-xs font-bold text-fes-red"
+            >
+              {error ?? verifyError}
+            </p>
+          )}
+          <form onSubmit={handleCodeSubmit} className="mt-4 flex flex-col gap-3">
+            <label
+              htmlFor="otp-code"
+              className="font-maru text-sm font-black text-fes-indigo"
+            >
+              6桁コード
+            </label>
+            <input
+              id="otp-code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              pattern="[0-9]{6}"
+              required
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="123456"
+              className="rounded-lg border-2 border-fes-ink/25 bg-kraft-paper px-3.5 py-2.5 font-maru text-sm font-bold text-fes-ink placeholder:text-fes-ink/40 focus:border-fes-indigo focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={verifying}
+              className="mt-2 rounded-lg border-2 border-fes-red-deep bg-fes-red px-4 py-2.5 font-maru text-sm font-black text-kraft-paper shadow-paper-sm transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+            >
+              {verifying ? "確認中…" : "コードでログイン"}
+            </button>
+          </form>
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={sending}
+            className="mt-3 font-maru text-xs font-black text-fes-indigo underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {sending ? "再送中…" : "コードを再送する"}
+          </button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3">
