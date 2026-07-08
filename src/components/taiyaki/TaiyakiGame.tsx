@@ -31,13 +31,17 @@ const EGG_RANGE = 85; // ±px（型の中での黄身の可動域）
 const CENTER_BAND = 0.15; // |ind| がこの帯なら「ど真ん中」
 const BIG_MISS = 0.62; // これを超えるとコンボが切れる大ミス
 const EGG_MAX = 60;
-// スイープ角速度: 序盤 2.4 → 終盤 4.6 rad/s
+// スイープ角速度: 序盤 2.4 → 終盤 4.6 rad/s（さらに匹ごとに ×0.8〜1.3 のゆらぎ）
 const SWEEP_BASE = 2.4;
 const SWEEP_RAMP = 2.2;
+// 開始位相は匹ごとにランダム（中央スタート＝即タップ攻略を防ぐ）
+const SWEEP_AMP_MIN = 0.82; // 振幅も匹ごとに 0.82〜1.0
+const SWEEP_AMP_SPAN = 0.18;
 
-// 焼きタイミング: doneness 0→1。黄金ゾーンでタップ
-const GOLD_LO = 0.7;
-const GOLD_HI = 0.9;
+// 焼きタイミング: doneness 0→1。黄金ゾーンは匹ごとにランダム
+const GOLD_LO_MIN = 0.55; // goldLo = 0.55〜0.83
+const GOLD_LO_SPAN = 0.28;
+const GOLD_W = 0.16; // ゾーン幅
 const BAKE_GOLD = 60;
 const BAKE_RAW = 30; // 生焼け（早すぎ）は半分
 // 焼き速度: 序盤 1/2.8 → 終盤 ×1.6
@@ -66,8 +70,12 @@ type Taiyaki = {
   stage: Stage;
   stageT: number;
   rare: Rare;
-  sweepW: number; // 卵スイープの角速度（生成時に確定）
+  sweepW: number; // 卵スイープの角速度（生成時に確定・匹ごとにゆらぎ）
+  eggPhase0: number; // スイープ開始位相 0〜2π（匹ごとにランダム）
+  sweepAmp: number; // スイープ振幅 0.82〜1.0（届く範囲が匹ごとに変わる）
   bakeSpeed: number; // 焼き速度（卵を割った時に確定）
+  goldLo: number; // この匹の黄金ゾーン下限（卵を割った時に確定）
+  goldHi: number; // 同・上限
   eggX: number | null; // 黄身の位置 -1〜+1（null = まだ）
   eggCentered: boolean;
   eggPts: number;
@@ -143,9 +151,9 @@ function progOf(s: Sim): number {
     : 0;
 }
 
-/** 卵指示マークの現在位置（-1〜+1）。stageT 駆動で決定的 */
+/** 卵指示マークの現在位置（-amp〜+amp）。stageT 駆動で決定的 */
 function indOf(ty: Taiyaki): number {
-  return Math.sin(ty.stageT * ty.sweepW);
+  return Math.sin(ty.stageT * ty.sweepW + ty.eggPhase0) * ty.sweepAmp;
 }
 
 function addPop(s: Sim, x: number, y: number, text: string): void {
@@ -189,12 +197,21 @@ function newTaiyaki(s: Sim): Taiyaki {
       rare === "wyolk" ? "W黄身！×1.5" : "チーズ増し！×1.5",
     );
   }
+  // 開始位相: ど真ん中バンドの外から始める（生成瞬間の即タップを防ぐ）
+  let eggPhase0 = Math.random() * Math.PI * 2;
+  if (Math.abs(Math.sin(eggPhase0)) <= CENTER_BAND * 1.6) {
+    eggPhase0 += Math.PI / 3;
+  }
   return {
     stage: "prep",
     stageT: 0,
     rare,
-    sweepW: SWEEP_BASE + SWEEP_RAMP * prog,
+    sweepW: (SWEEP_BASE + SWEEP_RAMP * prog) * (0.8 + 0.5 * Math.random()),
+    eggPhase0,
+    sweepAmp: SWEEP_AMP_MIN + SWEEP_AMP_SPAN * Math.random(),
     bakeSpeed: BASE_BAKE,
+    goldLo: GOLD_LO_MIN,
+    goldHi: GOLD_LO_MIN + GOLD_W,
     eggX: null,
     eggCentered: false,
     eggPts: 0,
@@ -294,6 +311,9 @@ function crackEgg(s: Sim, ty: Taiyaki): void {
   ty.stage = "bake";
   ty.stageT = 0;
   ty.bakeSpeed = BASE_BAKE * (1 + BAKE_RAMP * progOf(s));
+  // この匹の黄金ゾーンを決める（0.55〜0.83 から幅0.16）
+  ty.goldLo = GOLD_LO_MIN + GOLD_LO_SPAN * Math.random();
+  ty.goldHi = ty.goldLo + GOLD_W;
   sfx.pop(); // パカッ（卵割り）
   if (ty.eggCentered) {
     addPop(s, CX, CY - 150, "ど真ん中！");
@@ -309,9 +329,9 @@ function crackEgg(s: Sim, ty: Taiyaki): void {
 function pullOut(s: Sim, ty: Taiyaki): void {
   if (ty.stageT < LID_T) return; // フタが閉まりきるまで無効
   const d = ty.doneness;
-  if (d < GOLD_LO) {
+  if (d < ty.goldLo) {
     finishTaiyaki(s, ty, "raw", BAKE_RAW);
-  } else if (d <= GOLD_HI) {
+  } else if (d <= ty.goldHi) {
     finishTaiyaki(s, ty, ty.eggCentered ? "atari" : "kongari", BAKE_GOLD);
   } else {
     finishTaiyaki(s, ty, "burnt", 0);
@@ -378,10 +398,10 @@ function hexLerp(a: string, b: string, k: number): string {
   return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
 }
 
-/** doneness → 生地の色（クリーム → きつね色 → 焦げ茶） */
-function crustColor(d: number): string {
-  if (d <= GOLD_LO) return hexLerp(P.kraftLight, P.gold, d / GOLD_LO);
-  return hexLerp(P.gold, "#5B3413", (d - GOLD_LO) / (1 - GOLD_LO));
+/** doneness → 生地の色（クリーム → きつね色 → 焦げ茶）。lo = その匹の黄金ゾーン下限 */
+function crustColor(d: number, lo: number): string {
+  if (d <= lo) return hexLerp(P.kraftLight, P.gold, d / lo);
+  return hexLerp(P.gold, "#5B3413", (d - lo) / (1 - lo));
 }
 
 // たい焼きの魚シルエット（頭が左・尾が右）。中心 (0,0) 基準
@@ -616,7 +636,7 @@ function drawLid(ctx: CanvasRenderingContext2D, ty: Taiyaki, t: number): void {
   const lidK = clamp(ty.stageT / LID_T, 0, 1);
   const oy = -(1 - lidK) * 250;
   const d = ty.doneness;
-  const inZone = d >= GOLD_LO && d <= GOLD_HI;
+  const inZone = d >= ty.goldLo && d <= ty.goldHi;
 
   // 黄金ゾーン: フタの周りが金色に光る
   if (inZone) {
@@ -686,23 +706,27 @@ function drawGauge(ctx: CanvasRenderingContext2D, ty: Taiyaki, t: number): void 
   });
   ctx.fillStyle = "#332D28";
   ctx.fillRect(x0, y0, w, h);
-  // 黄金ゾーン
-  const inZone = d >= GOLD_LO && d <= GOLD_HI;
+  // 黄金ゾーン（匹ごとにランダムな位置。goldLo〜goldHi をそのまま描く）
+  const inZone = d >= ty.goldLo && d <= ty.goldHi;
   const zonePulse = inZone ? 0.25 + 0.25 * Math.sin(t * 9) : 0;
   ctx.fillStyle = `rgba(232,169,59,${0.45 + zonePulse})`;
-  ctx.fillRect(x0 + GOLD_LO * w, y0, (GOLD_HI - GOLD_LO) * w, h);
+  ctx.fillRect(x0 + ty.goldLo * w, y0, (ty.goldHi - ty.goldLo) * w, h);
+  // ゾーン両端の目印線
+  ctx.fillStyle = "rgba(255,217,138,.85)";
+  ctx.fillRect(x0 + ty.goldLo * w - 1, y0 - 2, 2, h + 4);
+  ctx.fillRect(x0 + ty.goldHi * w - 1, y0 - 2, 2, h + 4);
   // 進行
-  ctx.fillStyle = crustColor(d);
+  ctx.fillStyle = crustColor(d, ty.goldLo);
   ctx.fillRect(x0, y0 + 3, d * w, h - 6);
   // 針
   ctx.fillStyle = P.paper;
   ctx.fillRect(x0 + d * w - 1.5, y0 - 3, 3, h + 6);
-  // ラベル
+  // ラベル（ゾーンの真上に置く）
   ctx.font = "900 11px 'Zen Maru Gothic','Hiragino Maru Gothic ProN',sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = P.kraftLight;
-  ctx.fillText("こんがり", x0 + ((GOLD_LO + GOLD_HI) / 2) * w, y0 - 8);
+  ctx.fillText("こんがり", x0 + ((ty.goldLo + ty.goldHi) / 2) * w, y0 - 8);
 }
 
 /** 焼き上がったたい焼き（完成演出・お盆へ飛ぶ） */
