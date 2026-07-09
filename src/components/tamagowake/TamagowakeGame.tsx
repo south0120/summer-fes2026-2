@@ -20,7 +20,7 @@ import { ensureAudio, sfx } from "@/components/game/audio";
 
 const W = 480;
 const H = 640;
-const GAME_TIME = 30;
+const GAME_TIME = 45;
 const MISS_MAX = 3;
 
 // ベルトコンベア（右→左）
@@ -984,10 +984,10 @@ function render(ctx: CanvasRenderingContext2D, s: Sim): void {
 /* ================= コンポーネント ================= */
 
 function rankTitle(score: number): string {
-  if (score >= 1300) return "たまご仙人！";
-  if (score >= 800) return "鑑別名人！";
-  if (score >= 400) return "いい目してる！";
-  if (score >= 150) return "もうちょい！";
+  if (score >= 1800) return "たまご仙人！";
+  if (score >= 1100) return "鑑別名人！";
+  if (score >= 550) return "いい目してる！";
+  if (score >= 220) return "もうちょい！";
   return "また挑戦してね";
 }
 
@@ -1140,7 +1140,7 @@ export default function TamagowakeGame() {
         <p className="mt-3 font-maru text-sm font-bold">
           先頭のたまごを見きわめてタップ！
         </p>
-        <p className="mt-1.5 font-maru text-xs font-bold">30秒・ミス3回でおしまい</p>
+        <p className="mt-1.5 font-maru text-xs font-bold">45秒・ミス3回でおしまい</p>
         <ul className="mt-2 space-y-0.5 text-left font-maru text-xs font-bold text-fes-ink/80">
           <li>・斑点の小さい卵 → 左のうずらの巣へ</li>
           <li>・無地の大きい卵 → 右のひよこの巣へ</li>
