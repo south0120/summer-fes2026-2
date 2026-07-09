@@ -39,6 +39,7 @@ const YARD = { x0: 40, x1: W - 40, y0: 556, y1: 610 };
 
 // 難化・スコア
 const DIFF_MAX_BONUS = 1.6; // 終盤の速度/出現倍率 = 1 + 1.6（後半ほど急加速）
+const RAMP_TIME = 30; // 加速が最高速に達するまでの秒数（30秒版と同じ加速ペース。以降は最高速維持）
 const TRICKY_AT = 10; // この経過秒以降は紛らわしい薄斑点卵を混ぜる
 const TRICKY_RATE = 0.45;
 const BASE_PTS = 6; // 単価控えめ（完走で1000点いくかどうか）
@@ -374,7 +375,8 @@ function update(s: Sim, dt: number): void {
   s.t += dt;
   const elapsed = clamp(GAME_TIME - s.time, 0, GAME_TIME);
   // 時間経過で難化: 流速・出現間隔 1 → 2.6倍相当（ease-inで後半ほど急加速）
-  const prog = elapsed / GAME_TIME;
+  // 加速ペースは30秒版と同一（RAMP_TIMEで最高速に到達→以降は最高速を維持）
+  const prog = clamp(elapsed / RAMP_TIME, 0, 1);
   const diff =
     s.phase === "playing" ? 1 + DIFF_MAX_BONUS * Math.pow(prog, 1.5) : 1;
   const beltSpeed = BELT_SPEED * diff;
