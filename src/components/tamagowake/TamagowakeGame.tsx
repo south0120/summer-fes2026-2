@@ -41,11 +41,11 @@ const YARD = { x0: 40, x1: W - 40, y0: 556, y1: 610 };
 const DIFF_MAX_BONUS = 1.6; // 終盤の速度/出現倍率 = 1 + 1.6（後半ほど急加速）
 const TRICKY_AT = 10; // この経過秒以降は紛らわしい薄斑点卵を混ぜる
 const TRICKY_RATE = 0.45;
-const BASE_PTS = 10;
+const BASE_PTS = 6; // 単価控えめ（完走で1000点いくかどうか）
 const COMBO_STEP = 0.3; // コンボ1につき +0.3倍
 const COMBO_MAX_MULT = 2.5;
-const CAPTURE_PTS = 15; // 迷子ヒナ捕獲
-const LOST_PENALTY = 10; // 迷子退場の小減点
+const CAPTURE_PTS = 8; // 迷子ヒナ捕獲
+const LOST_PENALTY = 6; // 迷子退場の小減点
 const FLIGHT_T = 0.7; // 卵が巣へ飛ぶ時間
 const RETURN_T = 0.6; // 捕獲ヒナが巣へ戻る時間
 const STRAY_MIN = 3; // 迷い込み間隔（秒・難易度で短縮）
@@ -197,9 +197,9 @@ function makeBird(id: number, kind: EggKind, x: number): Bird {
 
 function makeSim(): Sim {
   let id = 1;
-  // ready画面用の飾り: 流れる卵と、運動場を歩く2羽
+  // ready画面用の飾り兼、開始時の初期卵。先頭卵は画面中央(半分)あたりから始める
   const eggs: Egg[] = [];
-  for (let i = 0; i < 4; i++) eggs.push(makeEgg(id++, 120 + i * 110, 0));
+  for (let i = 0; i < 4; i++) eggs.push(makeEgg(id++, W / 2 + i * 110, 0));
   const birds: Bird[] = [
     makeBird(id++, "quail", 140),
     makeBird(id++, "chick", 340),
@@ -984,10 +984,10 @@ function render(ctx: CanvasRenderingContext2D, s: Sim): void {
 /* ================= コンポーネント ================= */
 
 function rankTitle(score: number): string {
-  if (score >= 1800) return "たまご仙人！";
-  if (score >= 1100) return "鑑別名人！";
-  if (score >= 550) return "いい目してる！";
-  if (score >= 220) return "もうちょい！";
+  if (score >= 1000) return "たまご仙人！";
+  if (score >= 600) return "鑑別名人！";
+  if (score >= 300) return "いい目してる！";
+  if (score >= 100) return "もうちょい！";
   return "また挑戦してね";
 }
 
