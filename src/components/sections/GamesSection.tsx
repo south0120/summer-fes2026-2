@@ -57,6 +57,12 @@ const GAMES = [
     icon: "/art/game-taiyaki.png",
     href: "/taiyaki",
   },
+  {
+    title: "たまごわけ",
+    desc: "斑点はウズラ・無地はひよこ！見分けて仕分けろ！",
+    icon: "/art/game-tamagowake.png",
+    href: "/tamagowake",
+  },
 ] as const;
 
 export default function GamesSection() {
@@ -80,30 +86,29 @@ export default function GamesSection() {
           </Link>
         </div>
 
-        {/* ゲームカード
-            モバイル: 縦積み。PC(sm以上): 横1列。ゲームが少ないうちは伸びて横幅いっぱいに、
-            増えたら折り返さず横スクロール（basis + grow + shrink-0 + overflow-x-auto）。 */}
-        <div className="flex w-full min-w-0 flex-col gap-5 sm:-mx-1 sm:flex-row sm:overflow-x-auto sm:px-1 sm:pb-2">
+        {/* ゲームカード：ポスター風の縦カードをグリッドで並べる。
+            スマホ2列 → タブレット3列 → PC4列（ゲームが増えても折り返して並ぶ）。 */}
+        <div className="grid w-full min-w-0 grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
           {GAMES.map((g, i) => (
             <PaperCard
               key={g.href}
               torn={i % 2 === 0 ? 1 : 2}
-              className={`relative overflow-hidden p-4 pb-5 sm:shrink-0 sm:grow sm:basis-[280px] sm:snap-start ${i % 2 === 0 ? "tilt-l" : "tilt-r"}`}
+              className={`flex flex-col items-center p-3 pb-4 text-center ${i % 2 === 0 ? "tilt-l" : "tilt-r"}`}
             >
               <img
                 src={g.icon}
                 alt=""
-                className="pointer-events-none absolute -right-2 bottom-0 w-28 sm:w-24 lg:w-28"
+                className="pointer-events-none h-20 w-20 object-contain sm:h-24 sm:w-24"
               />
-              <h3 className="font-maru text-2xl font-black tracking-wider text-fes-indigo">
+              <h3 className="mt-1 font-maru text-base font-black tracking-wide text-fes-indigo sm:text-lg">
                 {g.title}
               </h3>
-              <p className="mt-2 max-w-[60%] font-maru text-xs font-bold leading-5 text-fes-ink/80">
+              <p className="mt-1 font-maru text-[11px] font-bold leading-4 text-fes-ink/75">
                 {g.desc}
               </p>
               <Link
                 href={g.href}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-full border-2 border-fes-red-deep bg-fes-red px-5 py-1.5 font-maru text-sm font-black text-kraft-paper shadow-paper-sm transition-transform hover:-translate-y-0.5"
+                className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border-2 border-fes-red-deep bg-fes-red px-4 py-1.5 font-maru text-xs font-black text-kraft-paper shadow-paper-sm transition-transform hover:-translate-y-0.5"
               >
                 遊ぶ
                 <span aria-hidden className="flex h-4 w-4 items-center justify-center rounded-full bg-kraft-paper text-[9px] text-fes-red">
