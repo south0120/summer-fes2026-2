@@ -19,6 +19,7 @@ const GAMES: GameKey[] = [
   "whack",
   "castella",
   "taiyaki",
+  "tamagowake",
 ];
 
 export default function RankingsPage() {
