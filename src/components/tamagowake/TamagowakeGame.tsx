@@ -20,7 +20,7 @@ import { ensureAudio, sfx } from "@/components/game/audio";
 
 const W = 480;
 const H = 640;
-const GAME_TIME = 60;
+const GAME_TIME = 30;
 const MISS_MAX = 3;
 
 // ベルトコンベア（右→左）
@@ -29,8 +29,8 @@ const BELT_H = 48;
 const BELT_LEFT = 36;
 const BELT_RIGHT = W + 30; // 卵の湧き位置（画面外右）
 const DROP_X = 54; // これより左に流れたら「落下」＝ミス
-const BELT_SPEED = 58; // 基本流速 px/s
-const SPAWN_BASE = 1.3; // 卵の出現間隔（秒）÷難易度
+const BELT_SPEED = 76; // 基本流速 px/s
+const SPAWN_BASE = 0.95; // 卵の出現間隔（秒）÷難易度
 
 // 巣・運動場
 const NEST_L = { x: 96, y: 470 }; // ウズラの巣（左）
@@ -38,9 +38,9 @@ const NEST_R = { x: 384, y: 470 }; // ひよこの巣（右）
 const YARD = { x0: 40, x1: W - 40, y0: 556, y1: 610 };
 
 // 難化・スコア
-const DIFF_MAX_BONUS = 0.6; // 終盤の速度/出現倍率 = 1 + 0.6
-const TRICKY_AT = 30; // この経過秒以降は紛らわしい薄斑点卵を混ぜる
-const TRICKY_RATE = 0.35;
+const DIFF_MAX_BONUS = 1.6; // 終盤の速度/出現倍率 = 1 + 1.6（後半ほど急加速）
+const TRICKY_AT = 10; // この経過秒以降は紛らわしい薄斑点卵を混ぜる
+const TRICKY_RATE = 0.45;
 const BASE_PTS = 10;
 const COMBO_STEP = 0.3; // コンボ1につき +0.3倍
 const COMBO_MAX_MULT = 2.5;
@@ -48,8 +48,8 @@ const CAPTURE_PTS = 15; // 迷子ヒナ捕獲
 const LOST_PENALTY = 10; // 迷子退場の小減点
 const FLIGHT_T = 0.7; // 卵が巣へ飛ぶ時間
 const RETURN_T = 0.6; // 捕獲ヒナが巣へ戻る時間
-const STRAY_MIN = 5; // 迷い込み間隔（秒）
-const STRAY_MAX = 9;
+const STRAY_MIN = 3; // 迷い込み間隔（秒・難易度で短縮）
+const STRAY_MAX = 6;
 
 type Phase = "ready" | "playing" | "result";
 type EggKind = "quail" | "chick";
@@ -217,7 +217,7 @@ function makeSim(): Sim {
     eggs,
     birds,
     spawnAt: 0.8,
-    strayAt: 8 + Math.random() * 3,
+    strayAt: 4 + Math.random() * 2,
     beltScroll: 0,
     ptr: { x: W / 2, y: H / 2, on: false },
     rings: [],
@@ -373,9 +373,10 @@ function tapAction(s: Sim, x: number, y: number): void {
 function update(s: Sim, dt: number): void {
   s.t += dt;
   const elapsed = clamp(GAME_TIME - s.time, 0, GAME_TIME);
-  // 時間経過で難化: 流速・出現間隔 1 → 1.6倍相当
+  // 時間経過で難化: 流速・出現間隔 1 → 2.6倍相当（ease-inで後半ほど急加速）
+  const prog = elapsed / GAME_TIME;
   const diff =
-    s.phase === "playing" ? 1 + DIFF_MAX_BONUS * (elapsed / GAME_TIME) : 1;
+    s.phase === "playing" ? 1 + DIFF_MAX_BONUS * Math.pow(prog, 1.5) : 1;
   const beltSpeed = BELT_SPEED * diff;
   s.beltScroll += beltSpeed * dt;
 
@@ -392,12 +393,14 @@ function update(s: Sim, dt: number): void {
       s.eggs.push(makeEgg(s.nextId++, BELT_RIGHT, elapsed));
     }
 
-    // ヒナの迷い込み（同時2羽まで）
+    // ヒナの迷い込み（後半ほど頻繁・多数が逃げ出す）
     if (s.t >= s.strayAt) {
-      s.strayAt = s.t + STRAY_MIN + Math.random() * (STRAY_MAX - STRAY_MIN);
+      s.strayAt =
+        s.t + (STRAY_MIN + Math.random() * (STRAY_MAX - STRAY_MIN)) / diff;
       const walkers = s.birds.filter((b) => b.state === "walk");
       const strays = s.birds.filter((b) => b.state === "stray").length;
-      if (walkers.length > 0 && strays < 2) {
+      const maxStray = Math.min(6, 2 + Math.floor((diff - 1) * 2.5));
+      if (walkers.length > 0 && strays < maxStray) {
         const b = walkers[Math.floor(Math.random() * walkers.length)];
         b.state = "stray";
         b.stateT = 0;
@@ -981,10 +984,10 @@ function render(ctx: CanvasRenderingContext2D, s: Sim): void {
 /* ================= コンポーネント ================= */
 
 function rankTitle(score: number): string {
-  if (score >= 2000) return "たまご仙人！";
-  if (score >= 1400) return "鑑別名人！";
-  if (score >= 800) return "いい目してる！";
-  if (score >= 300) return "もうちょい！";
+  if (score >= 1300) return "たまご仙人！";
+  if (score >= 800) return "鑑別名人！";
+  if (score >= 400) return "いい目してる！";
+  if (score >= 150) return "もうちょい！";
   return "また挑戦してね";
 }
 
@@ -1137,7 +1140,7 @@ export default function TamagowakeGame() {
         <p className="mt-3 font-maru text-sm font-bold">
           先頭のたまごを見きわめてタップ！
         </p>
-        <p className="mt-1.5 font-maru text-xs font-bold">60秒・ミス3回でおしまい</p>
+        <p className="mt-1.5 font-maru text-xs font-bold">30秒・ミス3回でおしまい</p>
         <ul className="mt-2 space-y-0.5 text-left font-maru text-xs font-bold text-fes-ink/80">
           <li>・斑点の小さい卵 → 左のうずらの巣へ</li>
           <li>・無地の大きい卵 → 右のひよこの巣へ</li>
