@@ -5,6 +5,7 @@ import Footer from "@/components/sections/Footer";
 import { createClient } from "@/lib/supabase/server";
 import { GAME_LABELS, type GameKey } from "@/lib/scores";
 import UsernameForm from "./UsernameForm";
+import MyPosters, { type MyPoster } from "./MyPosters";
 
 export const metadata = { title: "マイページ | Substack 夏祭り" };
 
@@ -76,6 +77,28 @@ export default async function MyPage() {
     // 取得に失敗しても 0 件表示にフォールバック
   }
 
+  // 自分が投稿したポスター / 屋台（管理・削除用）
+  let myPosters: MyPoster[] = [];
+  try {
+    const { data } = await supabase
+      .from("posters")
+      .select("id, kind, title, handle, image_path, likes, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    myPosters = (data ?? []).map((row) => ({
+      id: String(row.id),
+      kind: row.kind === "stall" ? "stall" : "poster",
+      title: String(row.title ?? ""),
+      handle: String(row.handle ?? ""),
+      likes: Number(row.likes ?? 0),
+      img: supabase.storage.from("posters").getPublicUrl(row.image_path).data
+        .publicUrl,
+    }));
+  } catch {
+    // 取得に失敗しても 0 件表示にフォールバック
+  }
+
   return (
     <>
       <Header />
@@ -94,6 +117,16 @@ export default async function MyPage() {
               ユーザーネームを変更する
             </h2>
             <UsernameForm userId={user.id} initialUsername={username} />
+          </section>
+
+          <section className="mt-8">
+            <h2 className="font-maru text-sm font-black text-fes-indigo">
+              自分の投稿
+            </h2>
+            <p className="mt-1 font-maru text-[11px] font-bold leading-5 text-fes-ink/60">
+              貼り出したポスター・屋台を削除できます。
+            </p>
+            <MyPosters posters={myPosters} />
           </section>
 
           <section className="mt-8">
