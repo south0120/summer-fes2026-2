@@ -84,6 +84,7 @@ export default async function MyPage() {
       .from("posters")
       .select("id, kind, title, handle, image_path, likes, created_at")
       .eq("user_id", user.id)
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(50);
     myPosters = (data ?? []).map((row) => ({

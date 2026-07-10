@@ -10,13 +10,17 @@ function Button({ title }: { title: string }) {
       type="submit"
       disabled={pending}
       onClick={(e) => {
-        if (!confirm(`「${title}」を削除します。元に戻せません。よろしいですか？`)) {
+        if (
+          !confirm(
+            `「${title}」を一覧から非表示にします。（あとで「非表示中」から復活できます）`,
+          )
+        ) {
           e.preventDefault();
         }
       }}
       className="shrink-0 rounded-full border-2 border-fes-red-deep bg-fes-red px-3 py-1.5 font-maru text-[11px] font-black text-kraft-paper hover:-translate-y-0.5 disabled:opacity-60"
     >
-      {pending ? "削除中…" : "削除"}
+      {pending ? "処理中…" : "非表示にする"}
     </button>
   );
 }

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { isAuthed, getAdminPath, getAdminSupabase } from "@/lib/admin";
 import { logout } from "../actions";
 import DeletePostButton from "./DeletePostButton";
+import RestorePostButton from "./RestorePostButton";
 
 export const metadata = { title: "管理ダッシュボード", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ type PosterRow = {
   image_path: string;
   description: string | null;
   created_at: string;
+  deleted_at: string | null;
 };
 
 function Stat({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
@@ -39,7 +41,9 @@ export default async function AdminDashboard() {
   const [postersRes, likesRes, scoresRes, profilesRes] = await Promise.all([
     supabase
       .from("posters")
-      .select("id, user_id, kind, title, handle, image_path, description, created_at")
+      .select(
+        "id, user_id, kind, title, handle, image_path, description, created_at, deleted_at",
+      )
       .order("created_at", { ascending: false }),
     supabase.from("likes").select("post_id, user_id"),
     supabase.from("scores").select("game, score, name, user_id"),
@@ -47,6 +51,9 @@ export default async function AdminDashboard() {
   ]);
 
   const posters = (postersRes.data ?? []) as PosterRow[];
+  // 表示中（deleted_at is null）と 非表示中（論理削除済み）に分ける
+  const activePosters = posters.filter((p) => !p.deleted_at);
+  const hiddenPosters = posters.filter((p) => p.deleted_at);
   const likes = (likesRes.data ?? []) as { post_id: string; user_id: string }[];
   const scores = (scoresRes.data ?? []) as {
     game: string;
@@ -56,7 +63,7 @@ export default async function AdminDashboard() {
   }[];
   const profileCount = profilesRes.count ?? 0;
 
-  const postCount = posters.length;
+  const postCount = activePosters.length;
   const likeTotal = likes.length;
 
   // いいね人気TOP
@@ -101,7 +108,7 @@ export default async function AdminDashboard() {
           <div>
             <h1 className="font-maru text-2xl font-black text-fes-indigo">管理ダッシュボード</h1>
             <p className="mt-1 font-maru text-xs font-bold text-fes-ink/60">
-              Substack 夏祭り の運営用。ここからアクセス解析の確認と投稿の削除ができます。
+              Substack 夏祭り の運営用。アクセス解析の確認と、投稿の非表示・復活ができます。
             </p>
           </div>
           <form action={logout}>
@@ -161,19 +168,19 @@ export default async function AdminDashboard() {
           </div>
         </section>
 
-        {/* 投稿一覧＋削除 */}
+        {/* 投稿一覧＋非表示（論理削除） */}
         <section className="mt-8">
           <h2 className="font-maru text-lg font-black text-fes-indigo">
-            投稿の管理（{posters.length}件）
+            投稿の管理（{activePosters.length}件）
           </h2>
           <p className="mt-1 font-maru text-[11px] font-bold text-fes-ink/50">
-            不適切な投稿はここから削除できます。削除すると画像・いいねも一緒に消え、元に戻せません。
+            不適切な投稿はここから非表示にできます。非表示にしても削除はされず、下の「非表示中」から復活できます。
           </p>
           <div className="mt-3 space-y-2">
-            {posters.length === 0 && (
+            {activePosters.length === 0 && (
               <p className="font-maru text-xs font-bold text-fes-ink/50">まだ投稿がありません。</p>
             )}
-            {posters.map((p) => (
+            {activePosters.map((p) => (
               <div
                 key={p.id}
                 className="flex items-center gap-3 rounded-xl border-2 border-fes-ink/10 bg-white/70 p-2"
@@ -201,6 +208,48 @@ export default async function AdminDashboard() {
             ))}
           </div>
         </section>
+
+        {/* 非表示中（論理削除済み）＋復活 */}
+        {hiddenPosters.length > 0 && (
+          <section className="mt-8">
+            <h2 className="font-maru text-lg font-black text-fes-indigo">
+              非表示中（{hiddenPosters.length}件）
+            </h2>
+            <p className="mt-1 font-maru text-[11px] font-bold text-fes-ink/50">
+              マイページや管理画面から非表示にした投稿です。データは残っているので「復活」で表示に戻せます。
+            </p>
+            <div className="mt-3 space-y-2">
+              {hiddenPosters.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-3 rounded-xl border-2 border-fes-ink/10 bg-fes-ink/[0.03] p-2"
+                >
+                  <img
+                    src={imgUrl(p.image_path)}
+                    alt=""
+                    className="h-14 w-14 shrink-0 rounded-md border border-fes-ink/15 object-cover opacity-60"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-maru text-sm font-black text-fes-ink/70">
+                        {p.title ?? "（無題）"}
+                      </span>
+                    </div>
+                    <div className="truncate font-maru text-[11px] font-bold text-fes-ink/45">
+                      {p.handle ?? ""}
+                      {p.deleted_at
+                        ? ` ・非表示 ${new Date(p.deleted_at).toLocaleString("ja-JP", {
+                            timeZone: "Asia/Tokyo",
+                          })}`
+                        : ""}
+                    </div>
+                  </div>
+                  <RestorePostButton id={p.id} title={p.title ?? "この投稿"} />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );

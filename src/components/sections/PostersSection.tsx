@@ -32,6 +32,7 @@ export default async function PostersSection() {
     const { data } = await supabase
       .from("posters")
       .select("id, description, title, handle, likes, image_path, link")
+      .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(24);
 

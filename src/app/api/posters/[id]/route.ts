@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getAdminSupabase } from "@/lib/admin";
 
 /**
- * 自分の投稿ポスター / 屋台を 1 件削除する。
- * - ログイン必須。
- * - 自分（user_id 一致）の投稿のみ削除できる（RLS でも保証されるが、
- *   ここでも所有者チェックして 403 を明示的に返す）。
- * - いいねは posters(id) の on delete cascade で自動的に消える。
- * - DB 行を先に消し、Storage の画像は best-effort で後片付けする
- *   （迷子ファイルは無害。POST 側の掃除方針に合わせる）。
+ * 自分の投稿ポスター / 屋台を 1 件「非表示」にする（論理削除・ソフトデリート）。
+ * - ログイン必須。自分（user_id 一致）の投稿のみ対象。
+ * - 物理削除はしない。`deleted_at` に時刻をセットして表示から外すだけ。
+ *   DB の行・Storage の画像・いいねはすべて残るので、管理画面から復活できる。
+ * - 更新は service_role クライアント（RLS バイパス）で行い、所有者チェックは
+ *   ここ（コード）で厳密に担保する。
  */
 export async function DELETE(
   _request: Request,
@@ -20,7 +20,6 @@ export async function DELETE(
   }
 
   const supabase = createClient();
-
   const {
     data: { user },
     error: userError,
@@ -29,15 +28,17 @@ export async function DELETE(
     return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
   }
 
-  // 対象の投稿を取得（画像パスと所有者の確認用）
-  const { data: row, error: fetchError } = await supabase
+  const admin = getAdminSupabase();
+
+  // 対象の投稿を取得（所有者の確認用）
+  const { data: row, error: fetchError } = await admin
     .from("posters")
-    .select("image_path, user_id")
+    .select("user_id")
     .eq("id", id)
     .maybeSingle();
 
   if (fetchError) {
-    console.error("posters delete fetch error:", fetchError.message);
+    console.error("posters soft-delete fetch error:", fetchError.message);
     return NextResponse.json(
       { error: "削除に失敗しました。時間をおいてもう一度お試しください。" },
       { status: 500 },
@@ -53,29 +54,20 @@ export async function DELETE(
     );
   }
 
-  // DB 行を削除（表示の正本。いいねはカスケードで自動削除される）
-  const { error: deleteError } = await supabase
+  // 論理削除: deleted_at をセット（既に非表示なら何もしない）。所有者条件も二重に付ける。
+  const { error: updateError } = await admin
     .from("posters")
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .is("deleted_at", null);
 
-  if (deleteError) {
-    console.error("posters delete error:", deleteError.message);
+  if (updateError) {
+    console.error("posters soft-delete error:", updateError.message);
     return NextResponse.json(
       { error: "削除に失敗しました。時間をおいてもう一度お試しください。" },
       { status: 500 },
     );
-  }
-
-  // Storage の画像を後片付け（失敗しても致命的ではないので握りつぶす）
-  if (typeof row.image_path === "string" && row.image_path) {
-    const { error: removeError } = await supabase.storage
-      .from("posters")
-      .remove([row.image_path]);
-    if (removeError) {
-      console.error("posters storage remove error:", removeError.message);
-    }
   }
 
   return NextResponse.json({ ok: true });

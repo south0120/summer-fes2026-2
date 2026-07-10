@@ -43,31 +43,45 @@ export async function logout(): Promise<void> {
   redirect(adminBase());
 }
 
-/** 投稿（ポスター/屋台）を削除。認証必須・service_role で RLS バイパス。 */
+/**
+ * 投稿（ポスター/屋台）を非表示にする（論理削除・ソフトデリート）。
+ * 認証必須・service_role で RLS バイパス。物理削除はせず deleted_at をセットするだけ。
+ * DB の行・画像・いいねは残るので、あとから復活できる。
+ */
 export async function deletePost(formData: FormData): Promise<void> {
   if (!isAuthed()) {
     throw new Error("認証が必要です。");
   }
   const id = String(formData.get("id") ?? "");
-  if (!id) throw new Error("削除対象がありません。");
+  if (!id) throw new Error("対象がありません。");
 
   const supabase = getAdminSupabase();
-
-  // 画像パスを取得してから Storage → DB 行の順で消す
-  const { data: row } = await supabase
+  const { error } = await supabase
     .from("posters")
-    .select("image_path")
-    .eq("id", id)
-    .maybeSingle();
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error("非表示に失敗しました: " + error.message);
 
-  if (row?.image_path) {
-    // 画像削除は失敗しても DB 行削除は続行（孤児画像より表示を優先）
-    await supabase.storage.from("posters").remove([row.image_path]);
+  revalidatePath(`${adminBase()}/dashboard`);
+}
+
+/**
+ * 非表示（論理削除済み）の投稿を復活させる。認証必須・service_role。
+ * deleted_at を null に戻すと、また表・一覧・投稿者のマイページに表示される。
+ */
+export async function restorePost(formData: FormData): Promise<void> {
+  if (!isAuthed()) {
+    throw new Error("認証が必要です。");
   }
+  const id = String(formData.get("id") ?? "");
+  if (!id) throw new Error("対象がありません。");
 
-  const { error } = await supabase.from("posters").delete().eq("id", id);
-  if (error) throw new Error("削除に失敗しました: " + error.message);
+  const supabase = getAdminSupabase();
+  const { error } = await supabase
+    .from("posters")
+    .update({ deleted_at: null })
+    .eq("id", id);
+  if (error) throw new Error("復活に失敗しました: " + error.message);
 
-  // いいね(likes)は posters への外部キーが on delete cascade なので自動で消える
   revalidatePath(`${adminBase()}/dashboard`);
 }
